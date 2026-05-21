@@ -1,0 +1,23 @@
+{
+	"name": "fpp-matrixscroller",
+	"author": "Mike Neiderhauser",
+	"description": "This plugin uses FPP's Pixel Overlay feature to allow displaying dynamic text on a matrix and drawing on a matrix using your mouse in the web UI.",
+	"homeURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller",
+	"srcURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller.git",
+	"bugURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller/issues",
+    
+	"versions": [
+		{
+			"minFPPVersion": "2.7",
+			"maxFPPVersion": "8.99",
+			"branch": "master",
+			"sha": ""
+		},
+		{
+			"minFPPVersion": "9.0",
+			"maxFPPVersion": "9.99",
+			"branch": "master",
+			"sha": ""
+		}
+	]
+}

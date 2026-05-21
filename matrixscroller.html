@@ -1,0 +1,631 @@
+<style>
+.ms-bar { display:flex; align-items:center; gap:14px; background:#0f3460; border:1px solid #1a4a80; border-radius:6px; padding:10px 16px; margin-bottom:18px; flex-wrap:wrap; }
+.ms-bar .song-name { font-weight:bold; color:#eee; font-size:0.95em; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ms-bar .time-info { color:#aaa; font-size:0.85em; white-space:nowrap; }
+.ms-bar .progress-wrap { flex:1; min-width:80px; max-width:180px; height:6px; background:#1a3060; border-radius:3px; overflow:hidden; }
+.ms-bar .progress-fill { height:100%; background:#e94560; border-radius:3px; transition:width 1s linear; }
+.ms-container { max-width:1100px; padding:10px 0; }
+.ms-card { background:#16213e; border-radius:8px; padding:20px; margin-bottom:18px; border:1px solid #0f3460; }
+.ms-card h2 { margin-top:0; color:#e94560; font-size:1.05em; border-bottom:1px solid #0f3460; padding-bottom:8px; display:flex; align-items:center; gap:10px; }
+.ms-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+.ms-field { display:flex; flex-direction:column; gap:4px; }
+.ms-field label { font-size:0.82em; color:#aaa; text-transform:uppercase; letter-spacing:0.05em; }
+.ms-field input[type=text], .ms-field input[type=number], .ms-field select {
+  background:#0f3460; border:1px solid #2a4a7f; color:#eee;
+  padding:7px 10px; border-radius:4px; font-size:0.95em; width:100%; box-sizing:border-box;
+}
+.ms-field input:focus, .ms-field select:focus { outline:none; border-color:#e94560; }
+.ms-chk-row { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.ms-chk-row input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:#e94560; }
+.ms-txt-chk { display:flex; gap:8px; align-items:center; }
+.ms-txt-chk input[type=checkbox] { flex-shrink:0; width:16px; height:16px; accent-color:#e94560; cursor:pointer; }
+.ms-txt-chk input[type=text], .ms-txt-chk select { flex:1; background:#0f3460; border:1px solid #2a4a7f; color:#eee; padding:7px 10px; border-radius:4px; font-size:0.95em; box-sizing:border-box; }
+.ms-section-lbl { font-size:0.8em; color:#e94560; text-transform:uppercase; letter-spacing:0.08em; margin:14px 0 8px; font-weight:bold; }
+.ms-mode-cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.ms-mode-col { background:#0d1b35; border-radius:6px; padding:14px; border:1px solid #0f3460; }
+.ms-mode-hdr { display:flex; align-items:center; gap:10px; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid #1a3060; }
+.ms-mode-hdr input[type=checkbox] { width:18px; height:18px; accent-color:#e94560; cursor:pointer; flex-shrink:0; }
+.ms-mode-hdr label { font-weight:bold; font-size:0.95em; cursor:pointer; }
+.ms-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.ms-tab { padding:7px 16px; border-radius:4px; cursor:pointer; font-size:0.9em; background:#0f3460; border:1px solid #2a4a7f; color:#aaa; }
+.ms-tab.active { background:#e94560; border-color:#e94560; color:#fff; }
+.ms-panel-sec { display:none; }
+.ms-panel-sec.active { display:block; }
+.ms-pill { display:inline-block; padding:2px 10px; border-radius:20px; font-size:0.8em; font-weight:bold; }
+.ms-playing { background:#14532d; color:#4ade80; }
+.ms-idle { background:#3b1f00; color:#fb923c; }
+.ms-stopped { background:#3b0000; color:#f87171; }
+.ms-status-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:12px; }
+.ms-status-card { background:#0f3460; border-radius:6px; padding:12px; }
+.ms-status-card .name { font-weight:bold; margin-bottom:6px; }
+.ms-status-card .msg { font-size:0.82em; color:#aaa; word-break:break-all; margin-top:4px; }
+.ms-ov-row { display:flex; gap:8px; margin-top:8px; }
+.ms-ov-row input { flex:1; background:#0f3460; border:1px solid #2a4a7f; color:#eee; padding:6px 10px; border-radius:4px; font-size:0.9em; }
+.ms-btns { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
+.ms-global-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; }
+.ms-so-row { background:#0a1628; border:1px solid #1a3060; border-radius:4px; padding:10px; margin-bottom:8px; }
+.ms-so-hdr { display:flex; gap:8px; align-items:flex-end; margin-bottom:10px; }
+.ms-so-fields { display:grid; grid-template-columns:1fr 1fr 90px 1fr 90px; gap:8px; align-items:end; }
+.ms-so-color-row { display:flex; gap:6px; align-items:center; margin-top:4px; }
+.ms-so-color-row input[type=color] { width:52px; height:30px; padding:2px; border-radius:4px; border:1px solid #2a4a7f; background:#0f3460; cursor:pointer; }
+.ms-so-color-row input[type=color]:disabled { opacity:0.3; cursor:not-allowed; }
+.ms-btn { padding:9px 20px; border:none; border-radius:4px; cursor:pointer; font-size:0.95em; font-weight:bold; }
+.ms-btn-primary { background:#e94560; color:#fff; }
+.ms-btn-primary:hover { background:#c73652; }
+.ms-btn-secondary { background:#0f3460; color:#eee; border:1px solid #2a4a7f; }
+.ms-btn-secondary:hover { background:#1a4a80; }
+.ms-btn-danger { background:#7f1d1d; color:#fca5a5; border:1px solid #b91c1c; }
+.ms-btn-danger:hover { background:#b91c1c; color:#fff; }
+.ms-btn-sm { padding:5px 12px; font-size:0.82em; }
+.ms-toast { position:fixed; bottom:24px; right:24px; background:#14532d; color:#4ade80; padding:12px 20px; border-radius:6px; font-size:0.9em; opacity:0; transition:opacity 0.3s; pointer-events:none; z-index:9999; }
+.ms-toast.show { opacity:1; }
+.ms-toast.error { background:#7f1d1d; color:#fca5a5; }
+@media (max-width:800px) { .ms-mode-cols,.ms-grid2 { grid-template-columns:1fr; } .ms-so-fields { grid-template-columns:1fr 1fr; } }
+</style>
+
+<div class="ms-container">
+
+  <!-- FPP Status Bar -->
+  <div class="ms-bar" id="ms-fpp-bar">
+    <span class="ms-pill ms-stopped">Loading…</span>
+  </div>
+
+  <!-- Panel Status -->
+  <div class="ms-card">
+    <h2>Panel Status <button class="ms-btn ms-btn-secondary ms-btn-sm" onclick="loadStatus()">&#8635; Refresh</button></h2>
+    <div id="ms-status-grid" class="ms-status-grid"><p style="color:#aaa">Loading…</p></div>
+  </div>
+
+  <!-- Global Settings -->
+  <div class="ms-card">
+    <h2>Global Settings</h2>
+    <div class="ms-global-grid">
+      <div class="ms-field"><label>FPP Host</label><input type="text" id="g_fpp_host" value="localhost"></div>
+      <div class="ms-field"><label>Poll Interval (s)</label><input type="number" id="g_poll_interval" value="1" step="0.5" min="0.5"></div>
+      <div class="ms-field"><label>No-Media Timeout (s)</label><input type="number" id="g_no_media_timeout" value="5" step="1" min="1"></div>
+      <div class="ms-field"><label>Matrixtools Path</label><input type="text" id="g_matrixtools_path" value="/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools"></div>
+    </div>
+  </div>
+
+  <!-- Panels -->
+  <div class="ms-card">
+    <h2>Panels</h2>
+    <div class="ms-tabs" id="ms-panel-tabs"></div>
+    <div id="ms-panel-sections"></div>
+    <div class="ms-btns">
+      <button class="ms-btn ms-btn-secondary" onclick="addPanel()">+ Add Panel</button>
+      <button class="ms-btn ms-btn-danger ms-btn-sm" onclick="removeActivePanel()">Remove Active Panel</button>
+    </div>
+  </div>
+
+  <div class="ms-btns">
+    <button class="ms-btn ms-btn-primary" onclick="saveConfig()">&#128190; Save Config</button>
+    <button class="ms-btn ms-btn-secondary" onclick="loadConfig()">&#8635; Reload from Daemon</button>
+  </div>
+
+</div>
+
+<div class="ms-toast" id="ms-toast"></div>
+
+<script>
+const API = '/api/plugin/fpp-matrixscroller';
+let config = { global: {}, panels: [] };
+let models = [];
+let fonts = [];
+let musicFiles = [];
+let activePanelIdx = 0;
+const songOverridesLists = {};
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, isError = false) {
+  const t = document.getElementById('ms-toast');
+  t.textContent = msg;
+  t.className = 'ms-toast show' + (isError ? ' error' : '');
+  setTimeout(() => t.className = 'ms-toast', 3000);
+}
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function apiFetch(path, method = 'GET', body = null) {
+  const opts = { method };
+  if (body !== null) {
+    opts.headers = { 'Content-Type': 'application/json' };
+    opts.body = JSON.stringify(body);
+  }
+  const resp = await fetch(API + path, opts);
+  return resp.json();
+}
+
+// ── FPP Status Bar ────────────────────────────────────────────────────────────
+async function loadFppStatus() {
+  try {
+    const resp = await fetch('/api/fppd/status');
+    const s = await resp.json();
+    const bar = document.getElementById('ms-fpp-bar');
+    if (s.status === 1) {
+      const total = (s.seconds_elapsed || 0) + (s.seconds_remaining || 0);
+      const pct = total > 0 ? Math.round((s.seconds_elapsed / total) * 100) : 0;
+      const song = s.current_song || s.current_sequence || '—';
+      bar.innerHTML = `
+        <span class="ms-pill ms-playing">&#9654; Playing</span>
+        <span class="song-name" title="${escHtml(song)}">${escHtml(song)}</span>
+        <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <span class="time-info">${escHtml(s.time_elapsed||'0:00')} / ${escHtml(s.time_remaining||'0:00')}</span>
+      `;
+    } else {
+      bar.innerHTML = `<span class="ms-pill ms-stopped">&#9632; Idle</span><span class="song-name" style="color:#888">No media playing</span>`;
+    }
+  } catch(e) { /* ignore */ }
+}
+
+// ── Panel Status ──────────────────────────────────────────────────────────────
+async function loadStatus() {
+  try {
+    const data = await apiFetch('/status');
+    const grid = document.getElementById('ms-status-grid');
+    if (!data.panels || data.panels.length === 0) {
+      grid.innerHTML = '<p style="color:#aaa">No panels configured.</p>';
+      return;
+    }
+    grid.innerHTML = data.panels.map(p => {
+      const modeLabel = p.mode === 'media' ? 'playing' : p.mode === 'no_media' ? 'idle' : p.mode || 'stopped';
+      const pillClass = p.mode === 'media' ? 'ms-playing' : p.mode === 'no_media' ? 'ms-idle' : 'ms-stopped';
+      return `<div class="ms-status-card">
+        <div class="name">${escHtml(p.name||p.id)} <span class="ms-pill ${pillClass}">${modeLabel}</span></div>
+        <div style="font-size:0.8em;color:#888">Model: ${escHtml(p.model||'—')}</div>
+        <div class="msg">${escHtml(p.message||'(no message)')}</div>
+        <div class="ms-ov-row">
+          <input type="text" placeholder="Override message…" id="ov_${escHtml(p.id)}">
+          <button class="ms-btn ms-btn-secondary ms-btn-sm" onclick="sendOverride('${escHtml(p.id)}')">Send</button>
+          <button class="ms-btn ms-btn-secondary ms-btn-sm" onclick="clearOverride('${escHtml(p.id)}')">Clear</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    document.getElementById('ms-status-grid').innerHTML = '<p style="color:#f87171">Daemon not reachable.</p>';
+  }
+}
+
+async function sendOverride(panelId) {
+  const msg = document.getElementById('ov_' + panelId)?.value || '';
+  await apiFetch('/message', 'POST', { panel_id: panelId, message: msg });
+  showToast('Override sent');
+}
+
+async function clearOverride(panelId) {
+  await apiFetch('/message', 'POST', { panel_id: panelId, message: null });
+  showToast('Override cleared');
+}
+
+// ── Fonts & Music ─────────────────────────────────────────────────────────────
+async function loadFonts() {
+  try {
+    const data = await apiFetch('/fonts');
+    fonts = Array.isArray(data) ? data : [];
+  } catch(e) {
+    fonts = ['DejaVuSans','FreeSans','Helvetica','NimbusSans-Regular'];
+  }
+}
+
+async function loadMusic() {
+  try {
+    const data = await apiFetch('/music');
+    musicFiles = (data.files || []).map(f => f.name);
+  } catch(e) { musicFiles = []; }
+}
+
+function fontOptions(selected) {
+  return ['', ...fonts].map(f =>
+    `<option value="${escHtml(f)}" ${f === (selected||'') ? 'selected' : ''}>${escHtml(f)||'-- Select Font --'}</option>`
+  ).join('');
+}
+
+function musicOptions(selected) {
+  const list = [...musicFiles];
+  if (selected && !list.includes(selected)) list.unshift(selected);
+  return ['', ...list].map(f =>
+    `<option value="${escHtml(f)}" ${f === (selected||'') ? 'selected' : ''}>${escHtml(f)||'-- Select Song --'}</option>`
+  ).join('');
+}
+
+// ── Models ────────────────────────────────────────────────────────────────────
+async function loadModels() {
+  try {
+    const data = await apiFetch('/models');
+    models = Array.isArray(data) ? data.map(m => m.Name||m.name||m) : [];
+  } catch(e) { models = []; }
+}
+
+function modelOptions(selected) {
+  return `<option value="">-- Select Model --</option>` +
+    models.map(m => `<option value="${escHtml(m)}" ${m===selected?'selected':''}>${escHtml(m)}</option>`).join('');
+}
+
+// ── Config ────────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const data = await apiFetch('/config');
+    config = data;
+    applyGlobalToUI();
+    renderPanelTabs();
+    showToast('Config loaded');
+  } catch(e) { showToast('Failed to load config', true); }
+}
+
+function applyGlobalToUI() {
+  const g = config.global || {};
+  document.getElementById('g_fpp_host').value = g.fpp_host || 'localhost';
+  document.getElementById('g_poll_interval').value = g.poll_interval || 1;
+  document.getElementById('g_no_media_timeout').value = g.no_media_timeout || 5;
+  document.getElementById('g_matrixtools_path').value = g.matrixtools_path || '/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools';
+}
+
+function collectGlobalFromUI() {
+  return {
+    fpp_host:        document.getElementById('g_fpp_host').value.trim(),
+    poll_interval:   parseFloat(document.getElementById('g_poll_interval').value) || 1,
+    no_media_timeout:parseFloat(document.getElementById('g_no_media_timeout').value) || 5,
+    matrixtools_path:document.getElementById('g_matrixtools_path').value.trim(),
+  };
+}
+
+async function saveConfig() {
+  config.global = collectGlobalFromUI();
+  config.panels = collectAllPanels();
+  try {
+    await apiFetch('/config', 'POST', config);
+    showToast('Config saved ✓');
+  } catch(e) { showToast('Save failed', true); }
+}
+
+// ── Panel rendering ───────────────────────────────────────────────────────────
+function txtChk(panelIdx, modeKey, fieldKey, label) {
+  const cId = `p${panelIdx}_${modeKey}_${fieldKey}_en`;
+  const tId = `p${panelIdx}_${modeKey}_${fieldKey}_txt`;
+  return `<div style="margin-bottom:8px;">
+    <label style="font-size:0.8em;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;">${label}</label>
+    <div class="ms-txt-chk" style="margin-top:4px;">
+      <input type="checkbox" id="${cId}" title="Enable">
+      <input type="text" id="${tId}" placeholder="${label}…">
+    </div>
+  </div>`;
+}
+
+function chkField(panelIdx, modeKey, fieldKey, label) {
+  const cId = `p${panelIdx}_${modeKey}_${fieldKey}_en`;
+  return `<div class="ms-chk-row" style="margin-bottom:6px;">
+    <input type="checkbox" id="${cId}">
+    <label for="${cId}" style="font-size:0.9em;">${label}</label>
+  </div>`;
+}
+
+function renderPanel(panelIdx, pcfg) {
+  const mediaFields = [
+    txtChk(panelIdx,'media','pre_roll','Pre-Roll'),
+    txtChk(panelIdx,'media','tune_to','Tune To'),
+    `<div class="ms-section-lbl" style="margin-top:10px;">Metadata Fields</div>`,
+    chkField(panelIdx,'media','artist','Artist'),
+    chkField(panelIdx,'media','title','Title'),
+    chkField(panelIdx,'media','album','Album'),
+    txtChk(panelIdx,'media','post_roll','Post-Roll'),
+    txtChk(panelIdx,'media','gap','Gap Text'),
+  ].join('');
+  const noMediaFields = [
+    txtChk(panelIdx,'no_media','pre_roll','Pre-Roll'),
+    txtChk(panelIdx,'no_media','tune_to','Tune To'),
+    txtChk(panelIdx,'no_media','post_roll','Post-Roll'),
+    txtChk(panelIdx,'no_media','gap','Gap Text'),
+  ].join('');
+
+  return `<div class="ms-panel-sec" id="panel-section-${panelIdx}">
+    <div class="ms-chk-row" style="margin-bottom:12px;">
+      <input type="checkbox" id="p${panelIdx}_enabled">
+      <label for="p${panelIdx}_enabled">Panel Enabled</label>
+    </div>
+    <div class="ms-grid2" style="margin-bottom:12px;">
+      <div class="ms-field"><label>Panel Name</label><input type="text" id="p${panelIdx}_name"></div>
+      <div class="ms-field"><label>Panel ID</label><input type="text" id="p${panelIdx}_id"></div>
+    </div>
+    <div class="ms-section-lbl">Matrix / Display</div>
+    <div class="ms-grid2">
+      <div class="ms-field"><label>Model (Pixel Overlay)</label>
+        <select id="p${panelIdx}_model">${modelOptions(pcfg.model||'')}</select>
+      </div>
+      <div class="ms-field"><label>Color</label><input type="color" id="p${panelIdx}_color"></div>
+      <div class="ms-field"><label>Font</label>
+        <select id="p${panelIdx}_font">${fontOptions(pcfg.font||'')}</select>
+      </div>
+      <div class="ms-field"><label>Font Size</label><input type="number" id="p${panelIdx}_fontsize" min="4" max="72"></div>
+      <div class="ms-field"><label>Position / Direction</label>
+        <select id="p${panelIdx}_position">
+          <option value="R2L">R2L – Right to Left</option>
+          <option value="L2R">L2R – Left to Right</option>
+          <option value="B2T">B2T – Bottom to Top</option>
+          <option value="T2B">T2B – Top to Bottom</option>
+          <option value="center">Center (static)</option>
+        </select>
+      </div>
+      <div class="ms-field"><label>Pixels Per Second</label><input type="number" id="p${panelIdx}_pps" min="1" max="200"></div>
+    </div>
+    <div class="ms-section-lbl">Message Fields</div>
+    <div class="ms-mode-cols">
+      <div class="ms-mode-col">
+        <div class="ms-mode-hdr">
+          <input type="checkbox" id="p${panelIdx}_media_enabled">
+          <label for="p${panelIdx}_media_enabled">&#127925; When Media Playing</label>
+        </div>
+        ${mediaFields}
+      </div>
+      <div class="ms-mode-col">
+        <div class="ms-mode-hdr">
+          <input type="checkbox" id="p${panelIdx}_no_media_enabled">
+          <label for="p${panelIdx}_no_media_enabled">&#9208; When No Media</label>
+        </div>
+        ${noMediaFields}
+      </div>
+    </div>
+    <div class="ms-section-lbl" style="margin-top:18px;">Per-Song Overrides</div>
+    <p style="font-size:0.8em;color:#888;margin:0 0 10px;">Override display params for a specific song. Select from the dropdown or type a custom filename key.</p>
+    <div id="p${panelIdx}_so_list"></div>
+    <button class="ms-btn ms-btn-secondary ms-btn-sm" onclick="addSongOverride(${panelIdx})">+ Add Song Override</button>
+  </div>`;
+}
+
+function renderPanelTabs() {
+  const tabs = document.getElementById('ms-panel-tabs');
+  const secs = document.getElementById('ms-panel-sections');
+  const panels = config.panels || [];
+  Object.keys(songOverridesLists).forEach(k => delete songOverridesLists[k]);
+  tabs.innerHTML = panels.map((p,i) =>
+    `<div class="ms-tab ${i===activePanelIdx?'active':''}" onclick="switchPanel(${i})">${escHtml(p.name||('Panel '+(i+1)))}</div>`
+  ).join('');
+  secs.innerHTML = panels.map((p,i) => renderPanel(i,p)).join('');
+  panels.forEach((p,i) => applyPanelToUI(i,p));
+  switchPanel(Math.min(activePanelIdx, panels.length-1));
+}
+
+function applyPanelToUI(idx, pcfg) {
+  const get = id => document.getElementById(id);
+  get(`p${idx}_enabled`).checked  = pcfg.enabled !== false;
+  get(`p${idx}_name`).value       = pcfg.name    || '';
+  get(`p${idx}_id`).value         = pcfg.id      || '';
+  get(`p${idx}_color`).value      = pcfg.color   || '#ff0000';
+  get(`p${idx}_fontsize`).value   = pcfg.fontsize || 10;
+  get(`p${idx}_pps`).value        = pcfg.pixelspersecond || 15;
+
+  const fontSel = get(`p${idx}_font`);
+  if (fontSel) { fontSel.innerHTML = fontOptions(pcfg.font||''); fontSel.value = pcfg.font||''; }
+
+  const posSel = get(`p${idx}_position`);
+  if (posSel) posSel.value = pcfg.position || 'R2L';
+
+  const mSel = get(`p${idx}_model`);
+  if (mSel) { mSel.innerHTML = modelOptions(pcfg.model||''); }
+
+  ['media','no_media'].forEach(mode => {
+    const enEl = get(`p${idx}_${mode}_enabled`);
+    if (enEl) enEl.checked = (pcfg[mode]||{}).enabled !== false;
+    ['pre_roll','tune_to','post_roll','gap'].forEach(field => {
+      const fCfg = (pcfg[mode]||{})[field]||{};
+      const enEl  = get(`p${idx}_${mode}_${field}_en`);
+      const txtEl = get(`p${idx}_${mode}_${field}_txt`);
+      if (enEl)  enEl.checked = fCfg.enabled || false;
+      if (txtEl) txtEl.value  = fCfg.text    || '';
+    });
+  });
+
+  const metaDef = { artist:true, title:true, album:false };
+  ['artist','title','album'].forEach(field => {
+    const el = get(`p${idx}_media_${field}_en`);
+    if (el) el.checked = ((pcfg.media||{})[field]||{}).enabled ?? metaDef[field];
+  });
+
+  applySongOverridesToUI(idx, pcfg.song_overrides||{});
+}
+
+function collectPanel(idx) {
+  const get = id => document.getElementById(id);
+  const panel = {
+    id:             get(`p${idx}_id`).value.trim()    || `panel_${idx+1}`,
+    name:           get(`p${idx}_name`).value.trim()  || `Panel ${idx+1}`,
+    enabled:        get(`p${idx}_enabled`).checked,
+    model:          get(`p${idx}_model`)?.value        || '',
+    color:          get(`p${idx}_color`).value.trim()  || '#ff0000',
+    font:           get(`p${idx}_font`)?.value         || 'Helvetica',
+    fontsize:       parseInt(get(`p${idx}_fontsize`).value) || 10,
+    position:       get(`p${idx}_position`)?.value     || 'R2L',
+    pixelspersecond:parseInt(get(`p${idx}_pps`).value) || 15,
+    media:{}, no_media:{},
+  };
+  ['media','no_media'].forEach(mode => {
+    panel[mode].enabled = get(`p${idx}_${mode}_enabled`)?.checked ?? true;
+    ['pre_roll','tune_to','post_roll','gap'].forEach(field => {
+      panel[mode][field] = {
+        enabled: get(`p${idx}_${mode}_${field}_en`)?.checked || false,
+        text:    get(`p${idx}_${mode}_${field}_txt`)?.value  || '',
+      };
+    });
+  });
+  const metaDef = { artist:true, title:true, album:false };
+  ['artist','title','album'].forEach(field => {
+    panel.media[field] = { enabled: get(`p${idx}_media_${field}_en`)?.checked ?? metaDef[field] };
+  });
+  panel.song_overrides = collectSongOverrides(idx);
+  return panel;
+}
+
+function collectAllPanels() {
+  return (config.panels||[]).map((_,i) => collectPanel(i));
+}
+
+function switchPanel(idx) {
+  activePanelIdx = idx;
+  document.querySelectorAll('.ms-tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  document.querySelectorAll('.ms-panel-sec').forEach((s,i) => s.classList.toggle('active', i===idx));
+}
+
+function addPanel() {
+  const newIdx = (config.panels||[]).length;
+  config.panels = collectAllPanels();
+  config.panels.push({
+    id:`panel_${newIdx+1}`, name:`Panel ${newIdx+1}`, enabled:true, model:'',
+    color:'#ff0000', font:'Helvetica', fontsize:10, position:'R2L', pixelspersecond:15,
+    media:{enabled:true,pre_roll:{enabled:false,text:''},tune_to:{enabled:false,text:'Tune To:'},
+           artist:{enabled:true},title:{enabled:true},album:{enabled:false},
+           post_roll:{enabled:false,text:''},gap:{enabled:true,text:' | '}},
+    no_media:{enabled:true,pre_roll:{enabled:false,text:''},tune_to:{enabled:true,text:'Tune To:'},
+              post_roll:{enabled:false,text:''},gap:{enabled:true,text:' | '}},
+    song_overrides:{},
+  });
+  activePanelIdx = config.panels.length-1;
+  renderPanelTabs();
+}
+
+function removeActivePanel() {
+  if ((config.panels||[]).length <= 1) { showToast('Must have at least one panel', true); return; }
+  config.panels = collectAllPanels();
+  config.panels.splice(activePanelIdx, 1);
+  activePanelIdx = Math.max(0, activePanelIdx-1);
+  renderPanelTabs();
+  showToast('Panel removed');
+}
+
+// ── Song overrides ────────────────────────────────────────────────────────────
+function toggleSoColor(cb, pfx) {
+  const picker = document.getElementById(`${pfx}_color`);
+  if (picker) picker.disabled = !cb.checked;
+}
+
+function soPositionOptions(selected) {
+  const opts = ['','R2L','L2R','B2T','T2B','center'];
+  const labels = {'':'— inherit —',R2L:'R2L',L2R:'L2R',B2T:'B2T',T2B:'T2B',center:'Center'};
+  return opts.map(v => `<option value="${v}" ${v===(selected||'')?'selected':''}>${labels[v]}</option>`).join('');
+}
+
+function renderSongOverrideRow(panelIdx, i, ov) {
+  const pfx = `p${panelIdx}_so_${i}`;
+  const fs = (ov.fontsize!=null && ov.fontsize!=='') ? ov.fontsize : '';
+  const pps = (ov.pixelspersecond!=null && ov.pixelspersecond!=='') ? ov.pixelspersecond : '';
+  return `<div class="ms-so-row">
+    <div class="ms-so-hdr">
+      <div style="flex:1;">
+        <label style="font-size:0.8em;color:#aaa;text-transform:uppercase;letter-spacing:0.05em;">Song (MP3 filename)</label>
+        <select id="${pfx}_key" style="width:100%;background:#0f3460;border:1px solid #2a4a7f;color:#eee;padding:7px 10px;border-radius:4px;font-size:0.95em;margin-top:4px;">
+          ${musicOptions(ov.key||'')}
+        </select>
+      </div>
+      <div class="ms-chk-row" style="margin-bottom:0;flex-shrink:0;">
+        <input type="checkbox" id="${pfx}_enabled" ${ov.enabled!==false?'checked':''}>
+        <label for="${pfx}_enabled" style="white-space:nowrap;">Enabled</label>
+      </div>
+      <button class="ms-btn ms-btn-danger ms-btn-sm" onclick="removeSongOverride(${panelIdx},${i})">&#10005; Remove</button>
+    </div>
+    <div class="ms-so-fields">
+      <div class="ms-field"><label>Color</label>
+        <div class="ms-so-color-row">
+          <input type="checkbox" id="${pfx}_color_en" style="width:16px;height:16px;accent-color:#e94560;cursor:pointer;flex-shrink:0;" ${ov.color?'checked':''} onchange="toggleSoColor(this,'${pfx}')">
+          <input type="color" id="${pfx}_color" value="${escHtml(ov.color||'#ff0000')}" ${ov.color?'':'disabled'}>
+        </div>
+      </div>
+      <div class="ms-field"><label>Font</label>
+        <select id="${pfx}_font" style="background:#0f3460;border:1px solid #2a4a7f;color:#eee;padding:7px 10px;border-radius:4px;font-size:0.95em;width:100%;">
+          ${fontOptions(ov.font||'')}
+        </select>
+      </div>
+      <div class="ms-field"><label>Font Size</label><input type="number" id="${pfx}_fontsize" placeholder="inherit" min="4" max="72" value="${fs}" style="background:#0f3460;border:1px solid #2a4a7f;color:#eee;padding:7px 10px;border-radius:4px;font-size:0.95em;width:100%;box-sizing:border-box;"></div>
+      <div class="ms-field"><label>Position</label>
+        <select id="${pfx}_position" style="background:#0f3460;border:1px solid #2a4a7f;color:#eee;padding:7px 10px;border-radius:4px;font-size:0.95em;width:100%;">${soPositionOptions(ov.position)}</select>
+      </div>
+      <div class="ms-field"><label>Pixels/Sec</label><input type="number" id="${pfx}_pps" placeholder="inherit" min="1" max="200" value="${pps}" style="background:#0f3460;border:1px solid #2a4a7f;color:#eee;padding:7px 10px;border-radius:4px;font-size:0.95em;width:100%;box-sizing:border-box;"></div>
+    </div>
+  </div>`;
+}
+
+function renderSongOverrides(panelIdx) {
+  const container = document.getElementById(`p${panelIdx}_so_list`);
+  if (!container) return;
+  const list = songOverridesLists[panelIdx]||[];
+  container.innerHTML = list.length === 0
+    ? '<p style="color:#555;font-size:0.82em;margin:6px 0 10px;">No song overrides configured.</p>'
+    : list.map((ov,i) => renderSongOverrideRow(panelIdx,i,ov)).join('');
+}
+
+function syncSongOverridesFromDOM(panelIdx) {
+  const container = document.getElementById(`p${panelIdx}_so_list`);
+  if (!container) return;
+  const list = [];
+  container.querySelectorAll('.ms-so-row').forEach((_,i) => {
+    const pfx = `p${panelIdx}_so_${i}`;
+    const fs = parseInt(document.getElementById(`${pfx}_fontsize`)?.value);
+    const pps = parseInt(document.getElementById(`${pfx}_pps`)?.value);
+    list.push({
+      key:            document.getElementById(`${pfx}_key`)?.value      || '',
+      enabled:        document.getElementById(`${pfx}_enabled`)?.checked ?? true,
+      color:          document.getElementById(`${pfx}_color_en`)?.checked ? (document.getElementById(`${pfx}_color`)?.value||'') : '',
+      font:           document.getElementById(`${pfx}_font`)?.value      || '',
+      fontsize:       isNaN(fs)  ? '' : fs,
+      position:       document.getElementById(`${pfx}_position`)?.value  || '',
+      pixelspersecond:isNaN(pps) ? '' : pps,
+    });
+  });
+  songOverridesLists[panelIdx] = list;
+}
+
+function addSongOverride(panelIdx) {
+  syncSongOverridesFromDOM(panelIdx);
+  if (!songOverridesLists[panelIdx]) songOverridesLists[panelIdx] = [];
+  songOverridesLists[panelIdx].push({key:'',enabled:true,color:'',font:'',fontsize:'',position:'',pixelspersecond:''});
+  renderSongOverrides(panelIdx);
+}
+
+function removeSongOverride(panelIdx, i) {
+  syncSongOverridesFromDOM(panelIdx);
+  if (songOverridesLists[panelIdx]) songOverridesLists[panelIdx].splice(i,1);
+  renderSongOverrides(panelIdx);
+}
+
+function applySongOverridesToUI(panelIdx, overridesDict) {
+  songOverridesLists[panelIdx] = Object.entries(overridesDict||{}).map(([key,ov]) => ({key,...ov}));
+  renderSongOverrides(panelIdx);
+}
+
+function collectSongOverrides(panelIdx) {
+  const container = document.getElementById(`p${panelIdx}_so_list`);
+  if (!container) return {};
+  const result = {};
+  container.querySelectorAll('.ms-so-row').forEach((_,i) => {
+    const pfx = `p${panelIdx}_so_${i}`;
+    const key = (document.getElementById(`${pfx}_key`)?.value||'').trim();
+    if (!key) return;
+    const ov = { enabled: document.getElementById(`${pfx}_enabled`)?.checked ?? true };
+    const colorOn = document.getElementById(`${pfx}_color_en`)?.checked;
+    const colorVal = (document.getElementById(`${pfx}_color`)?.value||'').trim();
+    if (colorOn && colorVal) ov.color = colorVal;
+    const font = document.getElementById(`${pfx}_font`)?.value||'';
+    if (font) ov.font = font;
+    const fs = parseInt(document.getElementById(`${pfx}_fontsize`)?.value);
+    if (!isNaN(fs) && fs > 0) ov.fontsize = fs;
+    const pos = document.getElementById(`${pfx}_position`)?.value||'';
+    if (pos) ov.position = pos;
+    const pps = parseInt(document.getElementById(`${pfx}_pps`)?.value);
+    if (!isNaN(pps) && pps > 0) ov.pixelspersecond = pps;
+    result[key] = ov;
+  });
+  return result;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([loadFonts(), loadMusic(), loadModels()]);
+  await loadConfig();
+  await loadStatus();
+  await loadFppStatus();
+  setInterval(loadStatus, 10000);
+  setInterval(loadFppStatus, 5000);
+}
+
+init();
+</script>

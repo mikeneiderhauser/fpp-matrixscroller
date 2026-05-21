@@ -1,0 +1,90 @@
+<?php
+
+/*
+ * Plugin API endpoints for fpp-matrixscroller.
+ * FPP mounts these under /api/plugin/fpp-matrixscroller/
+ * and proxies them to the Python daemon on port 32329.
+ *
+ * Function name: hyphens removed from plugin name per FPP convention.
+ */
+
+function getEndpointsfppmatrixscroller() {
+    $result = array();
+
+    $eps = array(
+        array('method' => 'GET',  'endpoint' => 'status',  'callback' => 'fppmatrixscrollerStatus'),
+        array('method' => 'GET',  'endpoint' => 'config',  'callback' => 'fppmatrixscrollerGetConfig'),
+        array('method' => 'GET',  'endpoint' => 'models',  'callback' => 'fppmatrixscrollerModels'),
+        array('method' => 'POST', 'endpoint' => 'config',  'callback' => 'fppmatrixscrollerPostConfig'),
+        array('method' => 'POST', 'endpoint' => 'message', 'callback' => 'fppmatrixscrollerMessage'),
+        array('method' => 'POST', 'endpoint' => 'reload',  'callback' => 'fppmatrixscrollerReload'),
+        array('method' => 'GET',  'endpoint' => 'fonts',   'callback' => 'fppmatrixscrollerFonts'),
+        array('method' => 'GET',  'endpoint' => 'music',   'callback' => 'fppmatrixscrollerMusic'),
+    );
+
+    foreach ($eps as $ep) {
+        array_push($result, $ep);
+    }
+
+    return $result;
+}
+
+function fppmatrixscrollerDaemonRequest($path, $method = 'GET') {
+    $daemon_url = 'http://localhost:32329/api/plugin/matrixscroller/' . $path;
+    $opts = array(
+        'http' => array(
+            'method'        => $method,
+            'timeout'       => 5,
+            'ignore_errors' => true,
+        )
+    );
+    if ($method === 'POST') {
+        $body = file_get_contents('php://input');
+        if ($body !== false && $body !== '') {
+            $opts['http']['header']  = "Content-Type: application/json\r\n";
+            $opts['http']['content'] = $body;
+        }
+    }
+    $ctx  = stream_context_create($opts);
+    $resp = @file_get_contents($daemon_url, false, $ctx);
+    if ($resp === false) {
+        return json(array('error' => 'matrixscroller daemon not running'));
+    }
+    $data = json_decode($resp, true);
+    if ($data === null) {
+        return json(array('error' => 'invalid response from daemon'));
+    }
+    return json($data);
+}
+
+function fppmatrixscrollerFonts() {
+    $mt = '/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools';
+    $out = @shell_exec($mt . ' --getfontlist 2>/dev/null');
+    $fonts = array();
+    $collecting = false;
+    foreach (explode("\n", $out ?: '') as $line) {
+        $line = trim($line);
+        if ($line === 'Available Fonts:') { $collecting = true; continue; }
+        if ($collecting) {
+            if ($line === '' || strpos($line, ' ') !== false) break;
+            $fonts[] = $line;
+        }
+    }
+    return json($fonts);
+}
+
+function fppmatrixscrollerMusic() {
+    $resp = @file_get_contents('http://localhost/api/files/music');
+    if ($resp === false) return json(array('files' => array()));
+    $data = json_decode($resp, true);
+    return json($data ?: array('files' => array()));
+}
+
+function fppmatrixscrollerStatus()     { return fppmatrixscrollerDaemonRequest('status'); }
+function fppmatrixscrollerGetConfig()  { return fppmatrixscrollerDaemonRequest('config'); }
+function fppmatrixscrollerModels()     { return fppmatrixscrollerDaemonRequest('models'); }
+function fppmatrixscrollerPostConfig() { return fppmatrixscrollerDaemonRequest('config', 'POST'); }
+function fppmatrixscrollerMessage()    { return fppmatrixscrollerDaemonRequest('message', 'POST'); }
+function fppmatrixscrollerReload()     { return fppmatrixscrollerDaemonRequest('reload', 'POST'); }
+
+?>
