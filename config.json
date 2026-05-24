@@ -1,0 +1,39 @@
+{
+    "global": {
+        "poll_interval": 1.0,
+        "no_media_timeout": 5.0,
+        "matrixtools_path": "/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools",
+        "fpp_host": "localhost"
+    },
+    "panels": [
+        {
+            "id": "panel_1",
+            "name": "Panel 1",
+            "enabled": true,
+            "model": "",
+            "color": "#ff0000",
+            "font": "Helvetica",
+            "fontsize": 10,
+            "position": "R2L",
+            "pixelspersecond": 15,
+            "media": {
+                "enabled": true,
+                "pre_roll": { "enabled": false, "text": "" },
+                "tune_to": { "enabled": false, "text": "Tune To:" },
+                "artist": { "enabled": true },
+                "title": { "enabled": true },
+                "album": { "enabled": false },
+                "post_roll": { "enabled": false, "text": "" },
+                "gap": { "enabled": true, "text": " | " }
+            },
+            "no_media": {
+                "enabled": true,
+                "pre_roll": { "enabled": false, "text": "" },
+                "tune_to": { "enabled": true, "text": "Tune To:" },
+                "post_roll": { "enabled": false, "text": "" },
+                "gap": { "enabled": true, "text": " | " }
+            },
+            "song_overrides": {}
+        }
+    ]
+}
