@@ -10,13 +10,13 @@
 		{
 			"minFPPVersion": "2.7",
 			"maxFPPVersion": "8.99",
-			"branch": "master",
+			"branch": "prototype",
 			"sha": ""
 		},
 		{
 			"minFPPVersion": "9.0",
 			"maxFPPVersion": "9.99",
-			"branch": "master",
+			"branch": "prototype",
 			"sha": ""
 		}
 	]
