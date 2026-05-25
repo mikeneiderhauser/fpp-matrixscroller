@@ -2,7 +2,7 @@
 
 # fpp-matrixscroller uninstall script
 
-PIDFILE="/var/run/matrixscroller.pid"
+PIDFILE="/var/run/fppd/matrixscroller.pid"
 
 if [ -f "$PIDFILE" ]; then
     PID=$(cat "$PIDFILE")
