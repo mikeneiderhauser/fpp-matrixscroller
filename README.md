@@ -11,6 +11,7 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 - **Per-song overrides** — override color, font, direction, speed, and artist/title/album text for specific songs; or suppress the overlay entirely for a song
 - **Enable Output toggle** — suppress all overlay effects without stopping the daemon
 - **Daemon controls** — Start, Stop, and Restart the daemon from the web UI
+- **Config backup & restore** — create timestamped backups, download/upload config as JSON, restore from any saved backup
 - **REST API** — get/set config, status, manual message overrides (useful for Home Assistant automations)
 - **Autostart** — starts automatically on install and on every FPP daemon start via `plugin_event.sh`
 - **Web UI** — configure all panels from the FPP plugin page; dark/light mode toggle
@@ -49,6 +50,7 @@ Open the plugin page in FPP's web interface. The UI includes:
 - **Panels** — full per-panel config including display settings, message fields, and per-song overrides
 - **Global Settings** — FPP host, poll interval, media idle timeout, matrixtools path, Enable Output toggle
 - **Daemon Control** — Start / Restart / Stop with live Online/Offline badge
+- **Backup & Restore** — create a timestamped server-side backup, download the current config as JSON, upload a JSON file to restore, or select a previous backup from the dropdown and restore it
 
 ## REST API
 
@@ -71,6 +73,9 @@ http://<fpp-ip>/api/plugin/fpp-matrixscroller/<endpoint>
 | GET | `daemon/start` | Start the daemon (if not running) |
 | POST | `daemon/restart` | Restart the daemon |
 | POST | `daemon/stop` | Stop the daemon |
+| GET | `backups` | List available config backup files |
+| POST | `backup` | Create a new timestamped config backup |
+| POST | `restore` | Restore config from a backup file (JSON body: `{"filename": "..."}`) |
 
 ### Manual Message Override
 
@@ -91,6 +96,23 @@ POST /api/plugin/fpp-matrixscroller/message
 {
   "panel_id": "panel_1",
   "message": null
+}
+```
+
+### Backup & Restore
+
+Backups are saved to `/home/fpp/media/config/` alongside the active config, named:
+
+```
+plugin.fpp-matrixscroller.backup.YYYYMMDD-HHMMSS.json
+```
+
+Restore from a specific backup via API:
+
+```json
+POST /api/plugin/fpp-matrixscroller/restore
+{
+  "filename": "plugin.fpp-matrixscroller.backup.20260101-120000.json"
 }
 ```
 
