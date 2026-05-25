@@ -245,7 +245,7 @@ async function loadStatus() {
               <span class="badge ${badgeCls}">${modeLabel}</span>
               ${scrollInfo}
             </div>
-            <div class="text-muted" style="font-size:0.78em;">Model: ${escHtml(p.model||'—')}</div>
+            <div class="text-muted" style="font-size:0.78em;">Model: ${escHtml(p.model||'—')}${(() => { const m = models.find(m => _modelName(m) === p.model); const d = m ? _modelDims(m) : ''; return d ? ` (${escHtml(d)})` : ''; })()}</div>
             <div class="small text-break mt-1">${escHtml(p.message||'(no message)')}</div>
             <div class="input-group input-group-sm mt-2">
               <input type="text" class="form-control" placeholder="Override message…" id="ov_${escHtml(p.id)}">
