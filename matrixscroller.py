@@ -645,6 +645,44 @@ class MatrixScrollerDaemon:
         host = self._global().get("fpp_host", "localhost")
         return get_fpp_models(host)
 
+    def list_backups(self) -> list:
+        prefix = "plugin.fpp-matrixscroller.backup."
+        d = os.path.dirname(CONFIG_PATH)
+        try:
+            files = [f for f in os.listdir(d)
+                     if f.startswith(prefix) and f.endswith(".json")]
+            return sorted(files, reverse=True)
+        except Exception:
+            return []
+
+    def create_backup(self) -> str:
+        ts = time.strftime("%Y%m%d-%H%M%S")
+        filename = f"plugin.fpp-matrixscroller.backup.{ts}.json"
+        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump(self.config, f, indent=4)
+        log.info("Config backed up to %s", path)
+        return filename
+
+    def restore_backup(self, filename: str) -> bool:
+        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+                or "/" in filename or ".." in filename
+                or not filename.endswith(".json")):
+            return False
+        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path) as f:
+                cfg = json.load(f)
+            self.update_config(cfg)
+            log.info("Config restored from %s", path)
+            return True
+        except Exception as e:
+            log.error("Failed to restore backup %s: %s", filename, e)
+            return False
+
 
 # ── REST API ──────────────────────────────────────────────────────────────────
 
@@ -689,6 +727,9 @@ class ApiHandler(BaseHTTPRequestHandler):
         elif path == "/api/plugin/matrixscroller/models":
             self._send_json(200, _daemon.get_models())
 
+        elif path == "/api/plugin/matrixscroller/backups":
+            self._send_json(200, _daemon.list_backups())
+
         else:
             self._send_json(404, {"error": "Not found"})
 
@@ -724,6 +765,21 @@ class ApiHandler(BaseHTTPRequestHandler):
         elif path == "/api/plugin/matrixscroller/reload":
             _daemon.reload_config()
             self._send_json(200, {"status": "reloaded"})
+
+        elif path == "/api/plugin/matrixscroller/backup":
+            filename = _daemon.create_backup()
+            self._send_json(200, {"status": "ok", "filename": filename})
+
+        elif path == "/api/plugin/matrixscroller/restore":
+            body = self._read_json()
+            if body is None:
+                self._send_json(400, {"error": "Invalid JSON"})
+                return
+            filename = body.get("filename", "")
+            if _daemon.restore_backup(filename):
+                self._send_json(200, {"status": "ok", "filename": filename})
+            else:
+                self._send_json(400, {"error": "Invalid or missing backup file"})
 
         elif path == "/api/plugin/matrixscroller/daemon/stop":
             self._send_json(200, {"status": "stopping"})

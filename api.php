@@ -23,6 +23,9 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
         array('method' => 'POST', 'endpoint' => 'daemon/stop',    'callback' => 'fppmatrixscrollerDaemonStop'),
         array('method' => 'POST', 'endpoint' => 'daemon/restart', 'callback' => 'fppmatrixscrollerDaemonRestart'),
+        array('method' => 'GET',  'endpoint' => 'backups',        'callback' => 'fppmatrixscrollerBackups'),
+        array('method' => 'POST', 'endpoint' => 'backup',         'callback' => 'fppmatrixscrollerBackup'),
+        array('method' => 'POST', 'endpoint' => 'restore',        'callback' => 'fppmatrixscrollerRestore'),
     );
 
     foreach ($eps as $ep) {
@@ -91,6 +94,9 @@ function fppmatrixscrollerMessage()    { return fppmatrixscrollerDaemonRequest('
 function fppmatrixscrollerReload()     { return fppmatrixscrollerDaemonRequest('reload', 'POST'); }
 function fppmatrixscrollerDaemonStop()    { return fppmatrixscrollerDaemonRequest('daemon/stop', 'POST'); }
 function fppmatrixscrollerDaemonRestart() { return fppmatrixscrollerDaemonRequest('daemon/restart', 'POST'); }
+function fppmatrixscrollerBackups()       { return fppmatrixscrollerDaemonRequest('backups'); }
+function fppmatrixscrollerBackup()        { return fppmatrixscrollerDaemonRequest('backup', 'POST'); }
+function fppmatrixscrollerRestore()       { return fppmatrixscrollerDaemonRequest('restore', 'POST'); }
 
 function fppmatrixscrollerDaemonStart() {
     $plugin_dir  = '/home/fpp/media/plugins/fpp-matrixscroller';

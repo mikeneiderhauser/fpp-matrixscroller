@@ -86,6 +86,20 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
     </div>
   </div>
 
+  <!-- Backup & Restore -->
+  <div class="card mb-3">
+    <div class="card-header"><strong>Backup &amp; Restore</strong></div>
+    <div class="card-body py-2 d-flex gap-2 flex-wrap align-items-center">
+      <button class="btn btn-sm btn-outline-secondary" onclick="backupConfig()">&#128190; Backup</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="downloadConfig()">&#8659; Download</button>
+      <label class="btn btn-sm btn-outline-secondary mb-0">&#8657; Upload<input type="file" accept=".json" class="d-none" onchange="uploadConfig(this)"></label>
+      <select id="ms-backup-list" class="form-select form-select-sm" style="max-width:280px;">
+        <option value="">-- Select Backup --</option>
+      </select>
+      <button class="btn btn-sm btn-outline-warning" onclick="restoreBackup()">&#8635; Restore</button>
+    </div>
+  </div>
+
   <div class="d-flex gap-2 mb-3">
     <button class="btn btn-primary" onclick="saveConfig()">&#128190; Save Config</button>
     <button class="btn btn-outline-secondary" onclick="loadConfig()">&#8635; Reload from Daemon</button>
@@ -809,6 +823,64 @@ function collectSongOverrides(panelIdx) {
   return result;
 }
 
+// ── Backup & Restore ──────────────────────────────────────────────────────────
+async function loadBackups() {
+  try {
+    const data = await apiFetch('/backups');
+    const sel = document.getElementById('ms-backup-list');
+    if (!sel) return;
+    const files = Array.isArray(data) ? data : [];
+    sel.innerHTML = '<option value="">-- Select Backup --</option>' +
+      files.map(f => `<option value="${escHtml(f)}">${escHtml(f)}</option>`).join('');
+  } catch(e) { /* daemon offline — leave list empty */ }
+}
+
+async function backupConfig() {
+  try {
+    const r = await apiFetch('/backup', 'POST');
+    showToast('Backup saved: ' + r.filename);
+    await loadBackups();
+  } catch(e) { showToast('Backup failed', true); }
+}
+
+async function restoreBackup() {
+  const sel = document.getElementById('ms-backup-list');
+  const filename = sel?.value;
+  if (!filename) { showToast('Select a backup first', true); return; }
+  try {
+    await apiFetch('/restore', 'POST', { filename });
+    showToast('Restored from ' + filename);
+    await loadConfig();
+  } catch(e) { showToast('Restore failed', true); }
+}
+
+function downloadConfig() {
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'plugin.fpp-matrixscroller.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function uploadConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const cfg = JSON.parse(e.target.result);
+      await apiFetch('/config', 'POST', cfg);
+      config = cfg;
+      applyGlobalToUI();
+      renderPanelTabs();
+      showToast('Config uploaded and applied');
+    } catch(err) { showToast('Upload failed — invalid JSON', true); }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
 // ── Dark mode ─────────────────────────────────────────────────────────────────
 function toggleDark() {
   const root = document.getElementById('ms-root');
@@ -833,7 +905,7 @@ async function init() {
   updateDaemonBadge();
   await Promise.all([loadFonts(), loadMusic(), loadModels()]);
   await loadConfig();
-  await loadStatus();
+  await Promise.all([loadStatus(), loadBackups()]);
   await loadFppStatus();
   setInterval(loadStatus,    10000);
   setInterval(loadFppStatus,  5000);
