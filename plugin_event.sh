@@ -12,7 +12,7 @@ LOGFILE="/home/fpp/media/logs/fpp-matrixscroller.log"
 start_daemon() {
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
-        if kill -0 "$PID" 2>/dev/null; then
+        if kill -0 "$PID" 2>/dev/null && grep -q "matrixscroller" /proc/$PID/cmdline 2>/dev/null; then
             echo "matrixscroller already running (PID $PID)"
             return
         fi
