@@ -16,8 +16,10 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'GET',  'endpoint' => 'config',  'callback' => 'fppmatrixscrollerGetConfig'),
         array('method' => 'GET',  'endpoint' => 'models',  'callback' => 'fppmatrixscrollerModels'),
         array('method' => 'POST', 'endpoint' => 'config',  'callback' => 'fppmatrixscrollerPostConfig'),
-        array('method' => 'POST', 'endpoint' => 'message', 'callback' => 'fppmatrixscrollerMessage'),
-        array('method' => 'POST', 'endpoint' => 'reload',  'callback' => 'fppmatrixscrollerReload'),
+        array('method' => 'POST', 'endpoint' => 'message',     'callback' => 'fppmatrixscrollerMessage'),
+        array('method' => 'POST', 'endpoint' => 'message/all', 'callback' => 'fppmatrixscrollerMessageAll'),
+        array('method' => 'POST', 'endpoint' => 'output',      'callback' => 'fppmatrixscrollerOutput'),
+        array('method' => 'POST', 'endpoint' => 'reload',      'callback' => 'fppmatrixscrollerReload'),
         array('method' => 'GET',  'endpoint' => 'fonts',          'callback' => 'fppmatrixscrollerFonts'),
         array('method' => 'GET',  'endpoint' => 'music',          'callback' => 'fppmatrixscrollerMusic'),
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
@@ -94,6 +96,8 @@ function fppmatrixscrollerGetConfig()  { return fppmatrixscrollerDaemonRequest('
 function fppmatrixscrollerModels()     { return fppmatrixscrollerDaemonRequest('models'); }
 function fppmatrixscrollerPostConfig() { return fppmatrixscrollerDaemonRequest('config', 'POST'); }
 function fppmatrixscrollerMessage()    { return fppmatrixscrollerDaemonRequest('message', 'POST'); }
+function fppmatrixscrollerMessageAll() { return fppmatrixscrollerDaemonRequest('message/all', 'POST'); }
+function fppmatrixscrollerOutput()     { return fppmatrixscrollerDaemonRequest('output', 'POST'); }
 function fppmatrixscrollerReload()     { return fppmatrixscrollerDaemonRequest('reload', 'POST'); }
 function fppmatrixscrollerDaemonStop()    { return fppmatrixscrollerDaemonRequest('daemon/stop', 'POST'); }
 function fppmatrixscrollerDaemonRestart() { return fppmatrixscrollerDaemonRequest('daemon/restart', 'POST'); }

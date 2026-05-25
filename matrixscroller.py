@@ -695,6 +695,22 @@ class MatrixScrollerDaemon:
             log.error("Failed to delete backup %s: %s", filename, e)
             return False
 
+    def set_output(self, enabled: bool):
+        """Enable or disable overlay output without a full config round-trip."""
+        self.config.setdefault("global", {})["enable_output"] = enabled
+        save_config(self.config)
+        log.info("Output %s", "enabled" if enabled else "disabled")
+
+    def set_override_all(self, message: Optional[str]) -> list:
+        """Set or clear a manual message override on every configured panel."""
+        with self._lock:
+            panel_ids = list(self.panels.keys())
+            for panel_id in panel_ids:
+                self._message_overrides[panel_id] = message
+        for panel in self.panels.values():
+            panel.force_resend()
+        return panel_ids
+
     def delete_all_backups(self) -> int:
         count = sum(1 for f in self.list_backups() if self.delete_backup(f))
         log.info("Deleted %d backup(s)", count)
@@ -839,6 +855,23 @@ class ApiHandler(BaseHTTPRequestHandler):
         elif path == "/api/plugin/matrixscroller/backup/delete-all":
             count = _daemon.delete_all_backups()
             self._send_json(200, {"status": "ok", "deleted": count})
+
+        elif path == "/api/plugin/matrixscroller/output":
+            body = self._read_json()
+            if body is None or "enable" not in body:
+                self._send_json(400, {"error": "enable field required"})
+                return
+            _daemon.set_output(bool(body["enable"]))
+            self._send_json(200, {"status": "ok", "enable_output": bool(body["enable"])})
+
+        elif path == "/api/plugin/matrixscroller/message/all":
+            body = self._read_json()
+            if body is None:
+                self._send_json(400, {"error": "Invalid JSON"})
+                return
+            message = body.get("message")  # None clears all overrides
+            panels = _daemon.set_override_all(message)
+            self._send_json(200, {"status": "ok", "panels": panels, "message": message})
 
         elif path == "/api/plugin/matrixscroller/daemon/stop":
             self._send_json(200, {"status": "stopping"})
