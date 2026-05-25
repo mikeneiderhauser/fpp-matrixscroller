@@ -1,5 +1,5 @@
 {
-	"name": "fpp-matrixscroller",
+	"name": "Matrix Scroller",
 	"repoName": "fpp-matrixscroller",
 	"author": "Mike Neiderhauser",
 	"description": "Scrolls song metadata and custom text across one or more LED matrix panels using fpp-matrixtools, with per-panel config, per-song overrides, and a web UI.",
