@@ -86,23 +86,25 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
     </div>
   </div>
 
-  <!-- Backup & Restore -->
-  <div class="card mb-3">
-    <div class="card-header"><strong>Backup &amp; Restore</strong></div>
-    <div class="card-body py-2 d-flex gap-2 flex-wrap align-items-center">
-      <button class="btn btn-sm btn-outline-secondary" onclick="backupConfig()">&#128190; Backup</button>
-      <button class="btn btn-sm btn-outline-secondary" onclick="downloadConfig()">&#8659; Download</button>
-      <label class="btn btn-sm btn-outline-secondary mb-0">&#8657; Upload<input type="file" accept=".json" class="d-none" onchange="uploadConfig(this)"></label>
-      <select id="ms-backup-list" class="form-select form-select-sm" style="max-width:280px;">
-        <option value="">-- Select Backup --</option>
-      </select>
-      <button class="btn btn-sm btn-outline-warning" onclick="restoreBackup()">&#8635; Restore</button>
-    </div>
-  </div>
-
   <div class="d-flex gap-2 mb-3">
     <button class="btn btn-primary" onclick="saveConfig()">&#128190; Save Config</button>
     <button class="btn btn-outline-secondary" onclick="loadConfig()">&#8635; Reload from Daemon</button>
+  </div>
+
+  <!-- Backup Manager -->
+  <div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <strong>Backup Manager</strong>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-sm btn-outline-secondary" onclick="backupConfig()">&#128190; Create Backup</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="downloadConfig()">&#8659; Download Current</button>
+        <label class="btn btn-sm btn-outline-secondary mb-0">&#8657; Upload &amp; Apply<input type="file" accept=".json" class="d-none" onchange="uploadConfig(this)"></label>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteAllBackups()">&#128465; Delete All</button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div id="ms-backup-table"><p class="text-muted small p-3 mb-0">Loading…</p></div>
+    </div>
   </div>
 
 </div>
@@ -823,16 +825,30 @@ function collectSongOverrides(panelIdx) {
   return result;
 }
 
-// ── Backup & Restore ──────────────────────────────────────────────────────────
+// ── Backup Manager ────────────────────────────────────────────────────────────
 async function loadBackups() {
+  const container = document.getElementById('ms-backup-table');
+  if (!container) return;
   try {
-    const data = await apiFetch('/backups');
-    const sel = document.getElementById('ms-backup-list');
-    if (!sel) return;
-    const files = Array.isArray(data) ? data : [];
-    sel.innerHTML = '<option value="">-- Select Backup --</option>' +
-      files.map(f => `<option value="${escHtml(f)}">${escHtml(f)}</option>`).join('');
-  } catch(e) { /* daemon offline — leave list empty */ }
+    const files = await apiFetch('/backups');
+    if (!Array.isArray(files) || files.length === 0) {
+      container.innerHTML = '<p class="text-muted small p-3 mb-0">No backups found.</p>';
+      return;
+    }
+    container.innerHTML = `<div class="table-responsive"><table class="table table-sm table-hover mb-0">
+      <thead><tr><th>Filename</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>${files.map(f => `<tr>
+        <td class="small align-middle">${escHtml(f)}</td>
+        <td class="text-end align-middle" style="white-space:nowrap;">
+          <button class="btn btn-sm btn-outline-secondary me-1" onclick="downloadBackup('${escHtml(f)}')">&#8659; Download</button>
+          <button class="btn btn-sm btn-outline-warning me-1" onclick="restoreBackupFile('${escHtml(f)}')">&#8635; Restore</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('${escHtml(f)}')">&#128465; Delete</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch(e) {
+    container.innerHTML = '<p class="text-muted small p-3 mb-0">Daemon offline — backups unavailable.</p>';
+  }
 }
 
 async function backupConfig() {
@@ -843,15 +859,42 @@ async function backupConfig() {
   } catch(e) { showToast('Backup failed', true); }
 }
 
-async function restoreBackup() {
-  const sel = document.getElementById('ms-backup-list');
-  const filename = sel?.value;
-  if (!filename) { showToast('Select a backup first', true); return; }
+async function downloadBackup(filename) {
+  try {
+    const data = await apiFetch('/backup/download?filename=' + encodeURIComponent(filename));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) { showToast('Download failed', true); }
+}
+
+async function restoreBackupFile(filename) {
   try {
     await apiFetch('/restore', 'POST', { filename });
     showToast('Restored from ' + filename);
     await loadConfig();
   } catch(e) { showToast('Restore failed', true); }
+}
+
+async function deleteBackup(filename) {
+  if (!confirm('Delete backup: ' + filename + '?')) return;
+  try {
+    await apiFetch('/backup/delete', 'POST', { filename });
+    showToast('Backup deleted');
+    await loadBackups();
+  } catch(e) { showToast('Delete failed', true); }
+}
+
+async function deleteAllBackups() {
+  if (!confirm('Delete ALL backups? This cannot be undone.')) return;
+  try {
+    const r = await apiFetch('/backup/delete-all', 'POST');
+    showToast('Deleted ' + r.deleted + ' backup(s)');
+    await loadBackups();
+  } catch(e) { showToast('Delete all failed', true); }
 }
 
 function downloadConfig() {

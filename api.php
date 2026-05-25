@@ -23,9 +23,12 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
         array('method' => 'POST', 'endpoint' => 'daemon/stop',    'callback' => 'fppmatrixscrollerDaemonStop'),
         array('method' => 'POST', 'endpoint' => 'daemon/restart', 'callback' => 'fppmatrixscrollerDaemonRestart'),
-        array('method' => 'GET',  'endpoint' => 'backups',        'callback' => 'fppmatrixscrollerBackups'),
-        array('method' => 'POST', 'endpoint' => 'backup',         'callback' => 'fppmatrixscrollerBackup'),
-        array('method' => 'POST', 'endpoint' => 'restore',        'callback' => 'fppmatrixscrollerRestore'),
+        array('method' => 'GET',  'endpoint' => 'backups',              'callback' => 'fppmatrixscrollerBackups'),
+        array('method' => 'POST', 'endpoint' => 'backup',              'callback' => 'fppmatrixscrollerBackup'),
+        array('method' => 'POST', 'endpoint' => 'restore',             'callback' => 'fppmatrixscrollerRestore'),
+        array('method' => 'GET',  'endpoint' => 'backup/download',     'callback' => 'fppmatrixscrollerBackupDownload'),
+        array('method' => 'POST', 'endpoint' => 'backup/delete',       'callback' => 'fppmatrixscrollerBackupDelete'),
+        array('method' => 'POST', 'endpoint' => 'backup/delete-all',   'callback' => 'fppmatrixscrollerBackupDeleteAll'),
     );
 
     foreach ($eps as $ep) {
@@ -94,9 +97,15 @@ function fppmatrixscrollerMessage()    { return fppmatrixscrollerDaemonRequest('
 function fppmatrixscrollerReload()     { return fppmatrixscrollerDaemonRequest('reload', 'POST'); }
 function fppmatrixscrollerDaemonStop()    { return fppmatrixscrollerDaemonRequest('daemon/stop', 'POST'); }
 function fppmatrixscrollerDaemonRestart() { return fppmatrixscrollerDaemonRequest('daemon/restart', 'POST'); }
-function fppmatrixscrollerBackups()       { return fppmatrixscrollerDaemonRequest('backups'); }
-function fppmatrixscrollerBackup()        { return fppmatrixscrollerDaemonRequest('backup', 'POST'); }
-function fppmatrixscrollerRestore()       { return fppmatrixscrollerDaemonRequest('restore', 'POST'); }
+function fppmatrixscrollerBackups()         { return fppmatrixscrollerDaemonRequest('backups'); }
+function fppmatrixscrollerBackup()          { return fppmatrixscrollerDaemonRequest('backup', 'POST'); }
+function fppmatrixscrollerRestore()         { return fppmatrixscrollerDaemonRequest('restore', 'POST'); }
+function fppmatrixscrollerBackupDelete()    { return fppmatrixscrollerDaemonRequest('backup/delete', 'POST'); }
+function fppmatrixscrollerBackupDeleteAll() { return fppmatrixscrollerDaemonRequest('backup/delete-all', 'POST'); }
+function fppmatrixscrollerBackupDownload() {
+    $qs = isset($_SERVER['QUERY_STRING']) && $_SERVER['QUERY_STRING'] !== '' ? '?' . $_SERVER['QUERY_STRING'] : '';
+    return fppmatrixscrollerDaemonRequest('backup/download' . $qs);
+}
 
 function fppmatrixscrollerDaemonStart() {
     $plugin_dir  = '/home/fpp/media/plugins/fpp-matrixscroller';
