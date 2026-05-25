@@ -19,12 +19,13 @@ import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Dict, Optional
+from urllib.parse import unquote, quote
 
 # ── Paths ────────────────────────────────────────────────────────────────────
 PLUGIN_DIR   = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH  = "/home/fpp/media/config/plugin.matrixscroller.json"
+CONFIG_PATH  = "/home/fpp/media/config/plugin.fpp-matrixscroller.json"
 DEFAULT_CFG  = os.path.join(PLUGIN_DIR, "config.json")
-LOG_PATH     = "/home/fpp/media/logs/matrixscroller.log"
+LOG_PATH     = "/home/fpp/media/logs/fpp-matrixscroller.log"
 API_PORT     = 32329
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -32,10 +33,7 @@ os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_PATH),
-        logging.StreamHandler(sys.stdout),
-    ],
+    handlers=[logging.FileHandler(LOG_PATH)],
 )
 log = logging.getLogger("matrixscroller")
 
@@ -86,6 +84,28 @@ def get_fpp_models(host: str) -> list:
     return []
 
 
+def get_fpp_media_meta(host: str, filename: str) -> dict:
+    """Return format.tags dict from FPP's ffprobe endpoint for a media file."""
+    encoded = quote(filename, safe='')
+    data = fpp_get(host, f"/api/media/{encoded}/meta", timeout=5.0)
+    if isinstance(data, dict):
+        return data.get("format", {}).get("tags", {})
+    return {}
+
+
+def _parse_time_str(t) -> float:
+    """Parse 'M:SS' or 'H:MM:SS' string to seconds. Returns 0.0 on failure."""
+    try:
+        parts = [int(x) for x in str(t).split(':')]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        if len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+    except Exception:
+        pass
+    return 0.0
+
+
 # ── Text sanitisation ─────────────────────────────────────────────────────────
 
 _CHAR_MAP = {
@@ -133,15 +153,21 @@ def build_message(panel_cfg: dict, mode: str, metadata: Optional[dict] = None) -
 
     if mode == "media" and metadata:
         song_parts = []
-        if fields.get("artist", {}).get("enabled", True) and metadata.get("artist"):
-            song_parts.append(metadata["artist"])
-        if fields.get("title",  {}).get("enabled", True) and metadata.get("title"):
+        artist_en = fields.get("artist", {}).get("enabled", True)
+        title_en  = fields.get("title",  {}).get("enabled", True)
+        album_en  = fields.get("album",  {}).get("enabled", False)
+        if title_en and metadata.get("title"):
             song_parts.append(metadata["title"])
-        if fields.get("album",  {}).get("enabled", False) and metadata.get("album"):
+        if artist_en and metadata.get("artist"):
+            song_parts.append(metadata["artist"])
+        if album_en and metadata.get("album"):
             song_parts.append(metadata["album"])
-        if not song_parts and metadata.get("fallback"):
+        # Use filename fallback only when a song-identity field is enabled but
+        # the MP3 has no embedded ID3 tags for any of them.
+        if not song_parts and (artist_en or title_en) and metadata.get("fallback"):
             song_parts.append(metadata["fallback"])
-        parts.extend(song_parts)
+        if song_parts:
+            parts.append(" - ".join(song_parts))
 
     post = fields.get("post_roll", {})
     if post.get("enabled") and post.get("text", "").strip():
@@ -163,6 +189,10 @@ class PanelController:
         self.current_message = ""
         self.current_mode = ""
         self.current_song_key = ""
+        self._last_cmd_sig = ""
+        self._last_sent_at: float = 0.0
+        self._est_scroll_sec: float = 0.0    # estimated duration of one pass
+        self._measured_scroll_sec: float = 0.0  # measured from first completed loop
 
     def _matrixtools_path(self) -> str:
         return self.gcfg.get(
@@ -194,7 +224,7 @@ class PanelController:
             "--enable", "1",
             "--message", message,
             "--color",          ov.get("color")          or cfg.get("color",          "#ff0000"),
-            "--font",           ov.get("font")           or cfg.get("font",           "Helvetica"),
+            "--font",           ov.get("font")           or cfg.get("font",           "DejaVuSans"),
             "--fontsize",   str(ov.get("fontsize")       or cfg.get("fontsize",       10)),
             "--position",       ov.get("position")       or cfg.get("position",       "R2L"),
             "--pixelspersecond", str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
@@ -229,8 +259,19 @@ class PanelController:
         except Exception as e:
             log.debug("Clear model failed: %s", e)
 
-    def start(self, message: str, mode: str, song_key: str = ""):
-        """Stop any existing process and start a new one with the given message."""
+    def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None) -> float:
+        """Estimate seconds for one full scroll pass of message across the matrix."""
+        cfg = self.cfg
+        ov  = overrides or {}
+        fontsize = int(ov.get("fontsize") or cfg.get("fontsize", 10))
+        pps      = max(1.0, float(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)))
+        model_name = cfg.get("model", "")
+        matrix_w = float((model_widths or {}).get(model_name) or 256)
+        msg_px   = len(message) * fontsize * 0.6
+        return (msg_px + matrix_w) / pps
+
+    def start(self, message: str, mode: str, song_key: str = "", seconds_remaining: float = 0.0, model_widths: dict = None):
+        """Send the scroll command, looping when the previous pass is estimated to have finished."""
         with self._lock:
             if not self.cfg.get("enabled", True):
                 return
@@ -244,6 +285,7 @@ class PanelController:
                 self.current_message = ""
                 self.current_mode = mode
                 self.current_song_key = song_key
+                self._last_sent_at = 0.0
                 return
 
             model = self.cfg.get("model", "")
@@ -257,15 +299,57 @@ class PanelController:
                 self.current_message = ""
                 self.current_mode = mode
                 self.current_song_key = song_key
+                self._last_sent_at = 0.0
                 return
 
-            # matrixtools is one-shot: sends command to FPP and exits immediately.
-            # Only resend when something actually changes.
-            if (message == self.current_message and mode == self.current_mode
-                    and song_key == self.current_song_key):
-                return
+            cfg = self.cfg
+            ov  = overrides or {}
+            cmd_sig = "|".join(str(x) for x in [
+                ov.get("color")           or cfg.get("color",           "#ff0000"),
+                ov.get("font")            or cfg.get("font",            "DejaVuSans"),
+                ov.get("fontsize")        or cfg.get("fontsize",        10),
+                ov.get("position")        or cfg.get("position",        "R2L"),
+                ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15),
+            ])
 
-            log.info("Panel '%s' [%s] song=%r: %s", self.cfg.get("name"), mode, song_key or "—", message)
+            now = time.monotonic()
+            content_changed = (
+                message  != self.current_message or
+                mode     != self.current_mode    or
+                song_key != self.current_song_key or
+                cmd_sig  != self._last_cmd_sig
+            )
+
+            if content_changed:
+                # New content: always resend; reset per-song scroll measurements
+                self._measured_scroll_sec = 0.0
+            else:
+                # Same content: only resend when the previous scroll pass has finished.
+                # Use the measured duration from the first loop if available, else the estimate.
+                scroll_sec = self._measured_scroll_sec or self._est_scroll_sec
+                if scroll_sec <= 0 or self._last_sent_at == 0:
+                    return  # Still on first pass — nothing to loop yet
+
+                elapsed = now - self._last_sent_at
+                # 1-second gap after scroll completes before restarting
+                if elapsed < scroll_sec + 1.0:
+                    return
+
+                # Don't start a pass that won't complete before the song ends
+                if seconds_remaining > 0 and seconds_remaining < scroll_sec:
+                    log.debug("Panel '%s' skipping loop — %.1fs remaining < %.1fs scroll",
+                              cfg.get("name"), seconds_remaining, scroll_sec)
+                    return
+
+                # Measure actual scroll duration from the first completed loop
+                if self._measured_scroll_sec == 0:
+                    self._measured_scroll_sec = max(1.0, elapsed - 1.0)
+                    log.info("Panel '%s' measured scroll: %.1fs per pass",
+                             cfg.get("name"), self._measured_scroll_sec)
+
+            self._est_scroll_sec = self._calc_scroll_sec(message, ov, model_widths)
+            log.info("Panel '%s' [%s] song=%r est=%.1fs: %s",
+                     cfg.get("name"), mode, song_key or "—", self._est_scroll_sec, message)
             self._stop_proc()
             cmd = self._build_cmd(message, overrides)
             try:
@@ -277,9 +361,11 @@ class PanelController:
                 self.current_message = message
                 self.current_mode = mode
                 self.current_song_key = song_key
+                self._last_cmd_sig = cmd_sig
+                self._last_sent_at = now
             except Exception as e:
                 log.error("Failed to start matrixtools for panel '%s': %s",
-                          self.cfg.get("name"), e)
+                          cfg.get("name"), e)
 
     def stop(self):
         with self._lock:
@@ -288,28 +374,51 @@ class PanelController:
             self.current_message = ""
             self.current_mode = ""
             self.current_song_key = ""
+            self._last_cmd_sig = ""
+            self._last_sent_at = 0.0
+            self._est_scroll_sec = 0.0
+            self._measured_scroll_sec = 0.0
 
     def status(self) -> dict:
         with self._lock:
             running = bool(self._proc and self._proc.poll() is None)
+            raw_elapsed = (time.monotonic() - self._last_sent_at) if self._last_sent_at else 0.0
+            scroll_sec = self._measured_scroll_sec or self._est_scroll_sec
+            elapsed = min(raw_elapsed, scroll_sec) if scroll_sec > 0 else raw_elapsed
+            overrides = self._get_song_overrides(self.current_song_key) if self.current_mode == "media" else {}
+            active_color = overrides.get("color") or self.cfg.get("color", "#ff0000")
         return {
             "id": self.cfg.get("id"),
             "name": self.cfg.get("name"),
             "enabled": self.cfg.get("enabled", True),
             "model": self.cfg.get("model", ""),
+            "color": active_color,
             "mode": self.current_mode,
             "message": self.current_message,
             "song_key": self.current_song_key,
             "running": running,
+            "scroll_sec": round(scroll_sec, 1),
+            "scroll_elapsed": round(elapsed, 1),
+            "scroll_measured": self._measured_scroll_sec > 0,
         }
 
-    def update_cfg(self, panel_cfg: dict):
+    def force_resend(self):
+        """Thread-safe reset so the next poll triggers a fresh send."""
+        with self._lock:
+            self.current_message = ""
+
+    def update_cfg(self, panel_cfg: dict, global_cfg: dict = None):
         with self._lock:
             self.cfg = panel_cfg
-            # Force restart on next poll cycle by clearing cached state
+            if global_cfg is not None:
+                self.gcfg = global_cfg
             self.current_message = ""
             self.current_mode = ""
             self.current_song_key = ""
+            self._last_cmd_sig = ""
+            self._last_sent_at = 0.0
+            self._est_scroll_sec = 0.0
+            self._measured_scroll_sec = 0.0
 
 
 # ── Main daemon ───────────────────────────────────────────────────────────────
@@ -324,6 +433,10 @@ class MatrixScrollerDaemon:
         self._no_media_since: Dict[str, Optional[float]] = {}
         self._message_overrides: Dict[str, Optional[str]] = {}
         self._current_song = ""
+        self._model_widths: Dict[str, int] = {}   # model name → pixel width from FPP
+        self._model_widths_at: float = 0.0
+        self._media_meta: dict = {}               # format.tags for current song
+        self._media_meta_key: str = ""            # song_key for which meta was fetched
         self._rebuild_panels()
 
     def _global(self) -> dict:
@@ -343,7 +456,7 @@ class MatrixScrollerDaemon:
             # Add or update panels
             for pid, pcfg in cfg_panels.items():
                 if pid in self.panels:
-                    self.panels[pid].update_cfg(pcfg)
+                    self.panels[pid].update_cfg(pcfg, self._global())
                 else:
                     self.panels[pid] = PanelController(pcfg, self._global())
                     self._no_media_since[pid] = None
@@ -358,22 +471,21 @@ class MatrixScrollerDaemon:
         """Set or clear a manual message override for a panel."""
         with self._lock:
             self._message_overrides[panel_id] = message
-            if panel_id in self.panels:
-                # Force restart
-                self.panels[panel_id].current_message = ""
+        if panel_id in self.panels:
+            self.panels[panel_id].force_resend()
 
     def _get_current_song_key(self, status: dict) -> str:
         """Return the current media filename without extension for song_overrides lookup."""
-        from urllib.parse import unquote
         for field in ("current_song", "current_sequence"):
             val = (status.get(field) or "").strip()
             if val:
                 return os.path.splitext(os.path.basename(unquote(val)))[0]
         return ""
 
-    def _get_metadata(self, status: dict) -> dict:
-        """Extract and sanitize metadata fields from FPP status."""
-        meta   = status.get("mediameta", {}) or {}
+    def _get_metadata(self, status: dict, file_tags: dict = None) -> dict:
+        """Extract and sanitize metadata, preferring file_tags over status.mediameta."""
+        # file_tags come from /api/media/{file}/meta (ffprobe) and are more complete
+        meta   = file_tags or status.get("mediameta", {}) or {}
         artist = _sanitize_text((meta.get("artist") or "").strip())
         title  = _sanitize_text((meta.get("title")  or "").strip())
         album  = _sanitize_text((meta.get("album")  or "").strip())
@@ -389,16 +501,57 @@ class MatrixScrollerDaemon:
         return status.get("status", 0) == 1
 
     def poll_once(self):
+        if not self._global().get("enable_output", True):
+            for panel in self.panels.values():
+                panel.stop()
+            return
+
         host = self._global().get("fpp_host", "localhost")
         no_media_timeout = float(self._global().get("no_media_timeout", 5.0))
+
+        # Refresh model widths from FPP every 60 s
+        pre = time.monotonic()
+        if pre - self._model_widths_at > 60:
+            fpp_models = get_fpp_models(host)
+            self._model_widths = {
+                m.get("Name") or m.get("name", ""): int(m.get("Width") or m.get("width") or 0)
+                for m in fpp_models if isinstance(m, dict)
+                if (m.get("Name") or m.get("name")) and (m.get("Width") or m.get("width"))
+            }
+            self._model_widths_at = pre
+            if self._model_widths:
+                log.debug("Model widths: %s", self._model_widths)
 
         status = get_fpp_status(host)
         if status is None:
             return  # FPP unreachable, leave current state
 
+        now = time.monotonic()  # captured after network calls to avoid overstating no-media elapsed
+
         playing  = self._is_playing(status)
-        metadata = self._get_metadata(status) if playing else {}
         song_key = self._get_current_song_key(status) if playing else ""
+
+        # When the song changes, fetch richer file-level tags from FPP's ffprobe endpoint.
+        # status.mediameta is often empty; /api/media/{file}/meta has full ID3/vorbis tags.
+        if playing and song_key and song_key != self._media_meta_key:
+            filename = (status.get("current_song") or status.get("current_sequence") or "").strip()
+            if filename:
+                tags = get_fpp_media_meta(host, os.path.basename(unquote(filename)))
+                self._media_meta = tags
+                log.info("Fetched media meta for '%s': %s", song_key,
+                         {k: v for k, v in tags.items() if k in ("title","artist","album","genre","date")})
+            else:
+                self._media_meta = {}
+            self._media_meta_key = song_key
+        elif not playing:
+            self._media_meta = {}
+            self._media_meta_key = ""
+
+        metadata = self._get_metadata(status, self._media_meta) if playing else {}
+        # Parse from the formatted string — seconds_remaining can be a playlist-level
+        # counter that doesn't reflect the current song's remaining time.
+        seconds_remaining = _parse_time_str(status.get("time_remaining", "")) or \
+                            float(status.get("seconds_remaining", 0))
         has_content = playing and bool(
             metadata.get("artist") or metadata.get("title") or metadata.get("fallback")
         )
@@ -408,8 +561,6 @@ class MatrixScrollerDaemon:
             self._current_song = f"{a} - {t}" if a and t else t or a or metadata.get("fallback", "")
         else:
             self._current_song = ""
-
-        now = time.monotonic()
 
         with self._lock:
             panels_snapshot = list(self.panels.items())
@@ -429,8 +580,13 @@ class MatrixScrollerDaemon:
                 # Reset no-media timer
                 self._no_media_since[pid] = None
                 if media_enabled:
-                    msg = build_message(panel.cfg, "media", metadata)
-                    panel.start(msg, "media", song_key)
+                    meta_for_panel = dict(metadata)
+                    so = panel._get_song_overrides(song_key) if song_key else {}
+                    for field in ("artist", "title", "album"):
+                        if so.get(field):
+                            meta_for_panel[field] = _sanitize_text(so[field])
+                    msg = build_message(panel.cfg, "media", meta_for_panel)
+                    panel.start(msg, "media", song_key, seconds_remaining, self._model_widths)
                 else:
                     panel.stop()
             else:
@@ -442,17 +598,17 @@ class MatrixScrollerDaemon:
                 if elapsed >= no_media_timeout:
                     if no_media_enabled:
                         msg = build_message(panel.cfg, "no_media")
-                        panel.start(msg, "no_media")
+                        panel.start(msg, "no_media", model_widths=self._model_widths)
                     else:
                         panel.stop()
                 # else: still in grace period, leave media overlay running
 
     def run(self):
         self._running = True
-        poll_interval = float(self._global().get("poll_interval", 1.0))
-        log.info("matrixscroller daemon starting (poll=%.1fs)", poll_interval)
+        log.info("matrixscroller daemon starting")
 
         while self._running:
+            poll_interval = float(self._global().get("poll_interval", 1.0))
             try:
                 self.poll_once()
             except Exception as e:
@@ -473,6 +629,7 @@ class MatrixScrollerDaemon:
         return {
             "running": self._running,
             "current_song": self._current_song,
+            "media_meta": self._media_meta,
             "panels": panels_status,
         }
 
@@ -519,6 +676,10 @@ class ApiHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0].rstrip("/")
 
+        if _daemon is None:
+            self._send_json(503, {"error": "daemon not initialized"})
+            return
+
         if path == "/api/plugin/matrixscroller/status":
             self._send_json(200, _daemon.get_status())
 
@@ -533,6 +694,10 @@ class ApiHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
+
+        if _daemon is None:
+            self._send_json(503, {"error": "daemon not initialized"})
+            return
 
         if path == "/api/plugin/matrixscroller/config":
             body = self._read_json()
@@ -559,6 +724,20 @@ class ApiHandler(BaseHTTPRequestHandler):
         elif path == "/api/plugin/matrixscroller/reload":
             _daemon.reload_config()
             self._send_json(200, {"status": "reloaded"})
+
+        elif path == "/api/plugin/matrixscroller/daemon/stop":
+            self._send_json(200, {"status": "stopping"})
+            threading.Thread(
+                target=lambda: (time.sleep(0.5), os.kill(os.getpid(), signal.SIGTERM)),
+                daemon=True,
+            ).start()
+
+        elif path == "/api/plugin/matrixscroller/daemon/restart":
+            self._send_json(200, {"status": "restarting"})
+            threading.Thread(
+                target=lambda: (time.sleep(0.5), os.execv(sys.executable, [sys.executable] + sys.argv)),
+                daemon=True,
+            ).start()
 
         else:
             self._send_json(404, {"error": "Not found"})

@@ -6,8 +6,8 @@
 
 PLUGIN_DIR="/home/fpp/media/plugins/fpp-matrixscroller"
 DAEMON="$PLUGIN_DIR/matrixscroller.py"
-PIDFILE="/var/run/matrixscroller.pid"
-LOGFILE="/home/fpp/media/logs/matrixscroller.log"
+PIDFILE="/var/run/fppd/matrixscroller.pid"
+LOGFILE="/home/fpp/media/logs/fpp-matrixscroller.log"
 
 start_daemon() {
     if [ -f "$PIDFILE" ]; then
