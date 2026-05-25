@@ -91,6 +91,22 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
     <button class="btn btn-outline-secondary" onclick="loadConfig()">&#8635; Reload from Daemon</button>
   </div>
 
+  <!-- Backup Manager -->
+  <div class="card mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+      <strong>Backup Manager</strong>
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-sm btn-outline-secondary" onclick="backupConfig()">&#128190; Create Backup</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="downloadConfig()">&#8659; Download Current</button>
+        <label class="btn btn-sm btn-outline-secondary mb-0">&#8657; Upload &amp; Apply<input type="file" accept=".json" class="d-none" onchange="uploadConfig(this)"></label>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteAllBackups()">&#128465; Delete All</button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div id="ms-backup-table"><p class="text-muted small p-3 mb-0">Loading…</p></div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Toast -->
@@ -229,7 +245,7 @@ async function loadStatus() {
               <span class="badge ${badgeCls}">${modeLabel}</span>
               ${scrollInfo}
             </div>
-            <div class="text-muted" style="font-size:0.78em;">Model: ${escHtml(p.model||'—')}</div>
+            <div class="text-muted" style="font-size:0.78em;">Model: ${escHtml(p.model||'—')}${(() => { const m = models.find(m => _modelName(m) === p.model); const d = m ? _modelDims(m) : ''; return d ? ` (${escHtml(d)})` : ''; })()}</div>
             <div class="small text-break mt-1">${escHtml(p.message||'(no message)')}</div>
             <div class="input-group input-group-sm mt-2">
               <input type="text" class="form-control" placeholder="Override message…" id="ov_${escHtml(p.id)}">
@@ -809,6 +825,105 @@ function collectSongOverrides(panelIdx) {
   return result;
 }
 
+// ── Backup Manager ────────────────────────────────────────────────────────────
+async function loadBackups() {
+  const container = document.getElementById('ms-backup-table');
+  if (!container) return;
+  try {
+    const files = await apiFetch('/backups');
+    if (!Array.isArray(files) || files.length === 0) {
+      container.innerHTML = '<p class="text-muted small p-3 mb-0">No backups found.</p>';
+      return;
+    }
+    container.innerHTML = `<div class="table-responsive"><table class="table table-sm table-hover mb-0">
+      <thead><tr><th>Filename</th><th class="text-end">Actions</th></tr></thead>
+      <tbody>${files.map(f => `<tr>
+        <td class="small align-middle">${escHtml(f)}</td>
+        <td class="text-end align-middle" style="white-space:nowrap;">
+          <button class="btn btn-sm btn-outline-secondary me-1" onclick="downloadBackup('${escHtml(f)}')">&#8659; Download</button>
+          <button class="btn btn-sm btn-outline-warning me-1" onclick="restoreBackupFile('${escHtml(f)}')">&#8635; Restore</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="deleteBackup('${escHtml(f)}')">&#128465; Delete</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  } catch(e) {
+    container.innerHTML = '<p class="text-muted small p-3 mb-0">Daemon offline — backups unavailable.</p>';
+  }
+}
+
+async function backupConfig() {
+  try {
+    const r = await apiFetch('/backup', 'POST');
+    showToast('Backup saved: ' + r.filename);
+    await loadBackups();
+  } catch(e) { showToast('Backup failed', true); }
+}
+
+async function downloadBackup(filename) {
+  try {
+    const data = await apiFetch('/backup/download?filename=' + encodeURIComponent(filename));
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) { showToast('Download failed', true); }
+}
+
+async function restoreBackupFile(filename) {
+  try {
+    await apiFetch('/restore', 'POST', { filename });
+    showToast('Restored from ' + filename);
+    await loadConfig();
+  } catch(e) { showToast('Restore failed', true); }
+}
+
+async function deleteBackup(filename) {
+  if (!confirm('Delete backup: ' + filename + '?')) return;
+  try {
+    await apiFetch('/backup/delete', 'POST', { filename });
+    showToast('Backup deleted');
+    await loadBackups();
+  } catch(e) { showToast('Delete failed', true); }
+}
+
+async function deleteAllBackups() {
+  if (!confirm('Delete ALL backups? This cannot be undone.')) return;
+  try {
+    const r = await apiFetch('/backup/delete-all', 'POST');
+    showToast('Deleted ' + r.deleted + ' backup(s)');
+    await loadBackups();
+  } catch(e) { showToast('Delete all failed', true); }
+}
+
+function downloadConfig() {
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'plugin.fpp-matrixscroller.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function uploadConfig(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async e => {
+    try {
+      const cfg = JSON.parse(e.target.result);
+      await apiFetch('/config', 'POST', cfg);
+      config = cfg;
+      applyGlobalToUI();
+      renderPanelTabs();
+      showToast('Config uploaded and applied');
+    } catch(err) { showToast('Upload failed — invalid JSON', true); }
+    input.value = '';
+  };
+  reader.readAsText(file);
+}
+
 // ── Dark mode ─────────────────────────────────────────────────────────────────
 function toggleDark() {
   const root = document.getElementById('ms-root');
@@ -833,7 +948,7 @@ async function init() {
   updateDaemonBadge();
   await Promise.all([loadFonts(), loadMusic(), loadModels()]);
   await loadConfig();
-  await loadStatus();
+  await Promise.all([loadStatus(), loadBackups()]);
   await loadFppStatus();
   setInterval(loadStatus,    10000);
   setInterval(loadFppStatus,  5000);
