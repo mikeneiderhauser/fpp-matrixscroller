@@ -1,14 +1,15 @@
 {
 	"name": "fpp-matrixscroller",
+	"repoName": "fpp-matrixscroller",
 	"author": "Mike Neiderhauser",
-	"description": "This plugin uses FPP's Pixel Overlay feature to allow displaying dynamic text on a matrix and drawing on a matrix using your mouse in the web UI.",
+	"description": "Scrolls song metadata and custom text across one or more LED matrix panels using fpp-matrixtools, with per-panel config, per-song overrides, and a web UI.",
 	"homeURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller",
 	"srcURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller.git",
 	"bugURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller/issues",
     
 	"versions": [
 		{
-			"minFPPVersion": "2.7",
+			"minFPPVersion": "8.0",
 			"maxFPPVersion": "8.99",
 			"branch": "master",
 			"sha": ""
