@@ -3,7 +3,6 @@
         "enable_output": true,
         "poll_interval": 1.0,
         "no_media_timeout": 5.0,
-        "matrixtools_path": "/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools",
         "fpp_host": "localhost"
     },
     "panels": [

@@ -1,6 +1,6 @@
 # fpp-matrixscroller
 
-FPP plugin that reads MP3 metadata from the currently playing sequence and scrolls it across one or more pixel matrix panels using [fpp-matrixtools](https://github.com/FalconChristmas/fpp-matrixtools).
+FPP plugin that reads MP3 metadata from the currently playing sequence and scrolls it across one or more pixel matrix panels using FPP's native Overlay Model Effect API.
 
 ## Features
 
@@ -18,8 +18,7 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 
 ## Requirements
 
-- FPP 6.0+
-- [fpp-matrixtools](https://github.com/FalconChristmas/fpp-matrixtools) installed
+- FPP 8.0+
 - Python 3.7+
 - One or more Pixel Overlay models configured in FPP
 
@@ -137,7 +136,6 @@ When no media has been playing for longer than `no_media_timeout` seconds, the n
     "fpp_host": "localhost",
     "poll_interval": 1.0,
     "no_media_timeout": 5.0,
-    "matrixtools_path": "/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools"
   },
   "panels": [
     {

@@ -75,8 +75,7 @@ Returns the full active configuration.
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
-    "no_media_timeout": 5.0,
-    "matrixtools_path": "/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools"
+    "no_media_timeout": 5.0
   },
   "panels": [
     {

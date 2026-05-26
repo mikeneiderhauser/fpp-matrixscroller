@@ -69,19 +69,10 @@ function fppmatrixscrollerDaemonRequest($path, $method = 'GET') {
 }
 
 function fppmatrixscrollerFonts() {
-    $mt = '/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools';
-    $out = @shell_exec($mt . ' --getfontlist 2>/dev/null');
-    $fonts = array();
-    $collecting = false;
-    foreach (explode("\n", $out ?: '') as $line) {
-        $line = trim($line);
-        if ($line === 'Available Fonts:') { $collecting = true; continue; }
-        if ($collecting) {
-            if ($line === '' || strpos($line, ' ') !== false) break;
-            $fonts[] = $line;
-        }
-    }
-    return json($fonts);
+    $resp = @file_get_contents('http://localhost/api/overlays/fonts');
+    if ($resp === false) return json(array());
+    $data = json_decode($resp, true);
+    return json(is_array($data) ? $data : array());
 }
 
 function fppmatrixscrollerMusic() {
