@@ -94,7 +94,11 @@ def fpp_post_command(host: str, payload: dict) -> Optional[dict]:
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=3.0) as resp:
-            return json.loads(resp.read())
+            body = resp.read()
+            try:
+                return json.loads(body) or {}
+            except Exception:
+                return {}  # non-JSON response is still a success
     except Exception as e:
         log.debug("FPP command POST failed: %s", e)
         return None
