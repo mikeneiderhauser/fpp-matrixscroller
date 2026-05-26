@@ -16,8 +16,10 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'GET',  'endpoint' => 'config',  'callback' => 'fppmatrixscrollerGetConfig'),
         array('method' => 'GET',  'endpoint' => 'models',  'callback' => 'fppmatrixscrollerModels'),
         array('method' => 'POST', 'endpoint' => 'config',  'callback' => 'fppmatrixscrollerPostConfig'),
-        array('method' => 'POST', 'endpoint' => 'message', 'callback' => 'fppmatrixscrollerMessage'),
-        array('method' => 'POST', 'endpoint' => 'reload',  'callback' => 'fppmatrixscrollerReload'),
+        array('method' => 'POST', 'endpoint' => 'message',     'callback' => 'fppmatrixscrollerMessage'),
+        array('method' => 'POST', 'endpoint' => 'message/all', 'callback' => 'fppmatrixscrollerMessageAll'),
+        array('method' => 'POST', 'endpoint' => 'output',      'callback' => 'fppmatrixscrollerOutput'),
+        array('method' => 'POST', 'endpoint' => 'reload',      'callback' => 'fppmatrixscrollerReload'),
         array('method' => 'GET',  'endpoint' => 'fonts',          'callback' => 'fppmatrixscrollerFonts'),
         array('method' => 'GET',  'endpoint' => 'music',          'callback' => 'fppmatrixscrollerMusic'),
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
@@ -67,19 +69,10 @@ function fppmatrixscrollerDaemonRequest($path, $method = 'GET') {
 }
 
 function fppmatrixscrollerFonts() {
-    $mt = '/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools';
-    $out = @shell_exec($mt . ' --getfontlist 2>/dev/null');
-    $fonts = array();
-    $collecting = false;
-    foreach (explode("\n", $out ?: '') as $line) {
-        $line = trim($line);
-        if ($line === 'Available Fonts:') { $collecting = true; continue; }
-        if ($collecting) {
-            if ($line === '' || strpos($line, ' ') !== false) break;
-            $fonts[] = $line;
-        }
-    }
-    return json($fonts);
+    $resp = @file_get_contents('http://localhost/api/overlays/fonts');
+    if ($resp === false) return json(array());
+    $data = json_decode($resp, true);
+    return json(is_array($data) ? $data : array());
 }
 
 function fppmatrixscrollerMusic() {
@@ -94,6 +87,8 @@ function fppmatrixscrollerGetConfig()  { return fppmatrixscrollerDaemonRequest('
 function fppmatrixscrollerModels()     { return fppmatrixscrollerDaemonRequest('models'); }
 function fppmatrixscrollerPostConfig() { return fppmatrixscrollerDaemonRequest('config', 'POST'); }
 function fppmatrixscrollerMessage()    { return fppmatrixscrollerDaemonRequest('message', 'POST'); }
+function fppmatrixscrollerMessageAll() { return fppmatrixscrollerDaemonRequest('message/all', 'POST'); }
+function fppmatrixscrollerOutput()     { return fppmatrixscrollerDaemonRequest('output', 'POST'); }
 function fppmatrixscrollerReload()     { return fppmatrixscrollerDaemonRequest('reload', 'POST'); }
 function fppmatrixscrollerDaemonStop()    { return fppmatrixscrollerDaemonRequest('daemon/stop', 'POST'); }
 function fppmatrixscrollerDaemonRestart() { return fppmatrixscrollerDaemonRequest('daemon/restart', 'POST'); }

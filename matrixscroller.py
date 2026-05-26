@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 fpp-matrixscroller daemon
-Watches FPP status and drives fpp-matrixtools overlays on N matrix panels.
-Each panel has independent config for media-playing and no-media modes.
+Watches FPP status and drives pixel overlay text effects on N matrix panels
+using FPP's native Overlay Model Effect command API directly.
 Exposes a REST API on port 32329 for config and status.
 """
 
@@ -10,7 +10,6 @@ import json
 import logging
 import os
 import signal
-import subprocess
 import sys
 import threading
 import time
@@ -82,6 +81,40 @@ def get_fpp_models(host: str) -> list:
     if isinstance(data, list):
         return data
     return []
+
+
+def fpp_post_command(host: str, payload: dict) -> Optional[dict]:
+    """POST to FPP's /api/command endpoint. Returns parsed response or None on error."""
+    url  = f"http://{host}/api/command"
+    data = json.dumps(payload).encode()
+    try:
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=3.0) as resp:
+            return json.loads(resp.read())
+    except Exception as e:
+        log.debug("FPP command POST failed: %s", e)
+        return None
+
+
+def fpp_put(host: str, path: str, payload: dict) -> bool:
+    """PUT JSON to a FPP API path. Returns True on success."""
+    url  = f"http://{host}{path}"
+    data = json.dumps(payload).encode()
+    try:
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="PUT",
+        )
+        with urllib.request.urlopen(req, timeout=3.0):
+            return True
+    except Exception as e:
+        log.debug("FPP PUT %s failed: %s", path, e)
+        return False
 
 
 def get_fpp_media_meta(host: str, filename: str) -> dict:
@@ -184,21 +217,15 @@ class PanelController:
     def __init__(self, panel_cfg: dict, global_cfg: dict):
         self.cfg = panel_cfg
         self.gcfg = global_cfg
-        self._proc: Optional[subprocess.Popen] = None
         self._lock = threading.Lock()
         self.current_message = ""
         self.current_mode = ""
         self.current_song_key = ""
         self._last_cmd_sig = ""
         self._last_sent_at: float = 0.0
-        self._est_scroll_sec: float = 0.0    # estimated duration of one pass
-        self._measured_scroll_sec: float = 0.0  # measured from first completed loop
-
-    def _matrixtools_path(self) -> str:
-        return self.gcfg.get(
-            "matrixtools_path",
-            "/home/fpp/media/plugins/fpp-matrixtools/scripts/matrixtools",
-        )
+        self._est_scroll_sec: float = 0.0
+        self._measured_scroll_sec: float = 0.0
+        self._effect_active: bool = False
 
     def _get_song_overrides(self, song_key: str) -> dict:
         """Return the song_overrides entry matching song_key (case-insensitive, extension-optional)."""
@@ -213,51 +240,43 @@ class PanelController:
                 return v
         return {}
 
-    def _build_cmd(self, message: str, overrides: dict = None) -> list:
+    def _build_effect_payload(self, message: str, overrides: dict = None,
+                              est_scroll_sec: float = 0.0) -> dict:
+        """Build the FPP 'Overlay Model Effect' command payload.
+
+        FPP's Text effect scrolls once and stops; it does not loop.
+        duration is set to est_scroll_sec + 15s so FPP keeps the overlay
+        active long enough for our timing loop to re-send before it expires.
+        """
         cfg = self.cfg
-        ov = overrides or {}
-        host = self.gcfg.get("fpp_host", "localhost")
-        cmd = [
-            self._matrixtools_path(),
-            "--host", host,
-            "--blockname", cfg.get("model", ""),
-            "--enable", "1",
-            "--message", message,
-            "--color",          ov.get("color")          or cfg.get("color",          "#ff0000"),
-            "--font",           ov.get("font")           or cfg.get("font",           "DejaVuSans"),
-            "--fontsize",   str(ov.get("fontsize")       or cfg.get("fontsize",       10)),
-            "--position",       ov.get("position")       or cfg.get("position",       "R2L"),
-            "--pixelspersecond", str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
-        ]
-        return cmd
+        ov  = overrides or {}
+        # Give FPP enough runway for one full pass plus a generous buffer so
+        # the effect never expires before our daemon re-sends.
+        duration = str(max(30, int(est_scroll_sec) + 15))
+        return {
+            "command": "Overlay Model Effect",
+            "args": [
+                cfg.get("model", ""),
+                "true",   # autoenable
+                "Text",
+                ov.get("color")               or cfg.get("color",           "#ff0000"),
+                ov.get("font")                or cfg.get("font",            "DejaVuSans"),
+                str(ov.get("fontsize")        or cfg.get("fontsize",        10)),
+                "false",  # anti-alias
+                ov.get("position")            or cfg.get("position",        "R2L"),
+                str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
+                duration,
+                message,
+            ]
+        }
 
-    def _stop_proc(self):
-        """Kill the running matrixtools subprocess if any."""
-        if self._proc and self._proc.poll() is None:
-            try:
-                self._proc.terminate()
-                self._proc.wait(timeout=2)
-            except Exception:
-                try:
-                    self._proc.kill()
-                except Exception:
-                    pass
-        self._proc = None
-
-    def _clear_model(self):
-        """Send a clear command to disable the overlay block."""
-        host = self.gcfg.get("fpp_host", "localhost")
+    def _stop_effect(self):
+        """Disable the overlay model via FPP's state API."""
+        host  = self.gcfg.get("fpp_host", "localhost")
         model = self.cfg.get("model", "")
         if not model:
             return
-        try:
-            subprocess.run(
-                [self._matrixtools_path(), "--host", host,
-                 "--blockname", model, "--enable", "0"],
-                timeout=3, capture_output=True
-            )
-        except Exception as e:
-            log.debug("Clear model failed: %s", e)
+        fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
     def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None) -> float:
         """Estimate seconds for one full scroll pass of message across the matrix."""
@@ -280,12 +299,12 @@ class PanelController:
 
             # Song override can disable this panel for a specific song
             if mode == "media" and overrides.get("enabled") is False:
-                self._stop_proc()
-                self._clear_model()
+                self._stop_effect()
                 self.current_message = ""
                 self.current_mode = mode
                 self.current_song_key = song_key
                 self._last_sent_at = 0.0
+                self._effect_active = False
                 return
 
             model = self.cfg.get("model", "")
@@ -294,12 +313,12 @@ class PanelController:
                 return
             if not message:
                 log.debug("Panel '%s' empty message, clearing", self.cfg.get("name"))
-                self._stop_proc()
-                self._clear_model()
+                self._stop_effect()
                 self.current_message = ""
                 self.current_mode = mode
                 self.current_song_key = song_key
                 self._last_sent_at = 0.0
+                self._effect_active = False
                 return
 
             cfg = self.cfg
@@ -350,27 +369,21 @@ class PanelController:
             self._est_scroll_sec = self._calc_scroll_sec(message, ov, model_widths)
             log.info("Panel '%s' [%s] song=%r est=%.1fs: %s",
                      cfg.get("name"), mode, song_key or "—", self._est_scroll_sec, message)
-            self._stop_proc()
-            cmd = self._build_cmd(message, overrides)
-            try:
-                self._proc = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
+            host    = self.gcfg.get("fpp_host", "localhost")
+            payload = self._build_effect_payload(message, overrides, self._est_scroll_sec)
+            if fpp_post_command(host, payload) is not None:
                 self.current_message = message
                 self.current_mode = mode
                 self.current_song_key = song_key
                 self._last_cmd_sig = cmd_sig
                 self._last_sent_at = now
-            except Exception as e:
-                log.error("Failed to start matrixtools for panel '%s': %s",
-                          cfg.get("name"), e)
+                self._effect_active = True
+            else:
+                log.error("Failed to send overlay command for panel '%s'", cfg.get("name"))
 
     def stop(self):
         with self._lock:
-            self._stop_proc()
-            self._clear_model()
+            self._stop_effect()
             self.current_message = ""
             self.current_mode = ""
             self.current_song_key = ""
@@ -378,10 +391,11 @@ class PanelController:
             self._last_sent_at = 0.0
             self._est_scroll_sec = 0.0
             self._measured_scroll_sec = 0.0
+            self._effect_active = False
 
     def status(self) -> dict:
         with self._lock:
-            running = bool(self._proc and self._proc.poll() is None)
+            running = self._effect_active
             raw_elapsed = (time.monotonic() - self._last_sent_at) if self._last_sent_at else 0.0
             scroll_sec = self._measured_scroll_sec or self._est_scroll_sec
             elapsed = min(raw_elapsed, scroll_sec) if scroll_sec > 0 else raw_elapsed
@@ -412,6 +426,7 @@ class PanelController:
             self.cfg = panel_cfg
             if global_cfg is not None:
                 self.gcfg = global_cfg
+            self._stop_effect()
             self.current_message = ""
             self.current_mode = ""
             self.current_song_key = ""
@@ -419,6 +434,7 @@ class PanelController:
             self._last_sent_at = 0.0
             self._est_scroll_sec = 0.0
             self._measured_scroll_sec = 0.0
+            self._effect_active = False
 
 
 # ── Main daemon ───────────────────────────────────────────────────────────────
@@ -695,6 +711,22 @@ class MatrixScrollerDaemon:
             log.error("Failed to delete backup %s: %s", filename, e)
             return False
 
+    def set_output(self, enabled: bool):
+        """Enable or disable overlay output without a full config round-trip."""
+        self.config.setdefault("global", {})["enable_output"] = enabled
+        save_config(self.config)
+        log.info("Output %s", "enabled" if enabled else "disabled")
+
+    def set_override_all(self, message: Optional[str]) -> list:
+        """Set or clear a manual message override on every configured panel."""
+        with self._lock:
+            panel_ids = list(self.panels.keys())
+            for panel_id in panel_ids:
+                self._message_overrides[panel_id] = message
+        for panel in self.panels.values():
+            panel.force_resend()
+        return panel_ids
+
     def delete_all_backups(self) -> int:
         count = sum(1 for f in self.list_backups() if self.delete_backup(f))
         log.info("Deleted %d backup(s)", count)
@@ -839,6 +871,23 @@ class ApiHandler(BaseHTTPRequestHandler):
         elif path == "/api/plugin/matrixscroller/backup/delete-all":
             count = _daemon.delete_all_backups()
             self._send_json(200, {"status": "ok", "deleted": count})
+
+        elif path == "/api/plugin/matrixscroller/output":
+            body = self._read_json()
+            if body is None or "enable" not in body:
+                self._send_json(400, {"error": "enable field required"})
+                return
+            _daemon.set_output(bool(body["enable"]))
+            self._send_json(200, {"status": "ok", "enable_output": bool(body["enable"])})
+
+        elif path == "/api/plugin/matrixscroller/message/all":
+            body = self._read_json()
+            if body is None:
+                self._send_json(400, {"error": "Invalid JSON"})
+                return
+            message = body.get("message")  # None clears all overrides
+            panels = _daemon.set_override_all(message)
+            self._send_json(200, {"status": "ok", "panels": panels, "message": message})
 
         elif path == "/api/plugin/matrixscroller/daemon/stop":
             self._send_json(200, {"status": "stopping"})
