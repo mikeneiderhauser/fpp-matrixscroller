@@ -240,10 +240,19 @@ class PanelController:
                 return v
         return {}
 
-    def _build_effect_payload(self, message: str, overrides: dict = None) -> dict:
-        """Build the FPP 'Overlay Model Effect' command payload."""
+    def _build_effect_payload(self, message: str, overrides: dict = None,
+                              est_scroll_sec: float = 0.0) -> dict:
+        """Build the FPP 'Overlay Model Effect' command payload.
+
+        FPP's Text effect scrolls once and stops; it does not loop.
+        duration is set to est_scroll_sec + 15s so FPP keeps the overlay
+        active long enough for our timing loop to re-send before it expires.
+        """
         cfg = self.cfg
         ov  = overrides or {}
+        # Give FPP enough runway for one full pass plus a generous buffer so
+        # the effect never expires before our daemon re-sends.
+        duration = str(max(30, int(est_scroll_sec) + 15))
         return {
             "command": "Overlay Model Effect",
             "args": [
@@ -256,7 +265,7 @@ class PanelController:
                 "false",  # anti-alias
                 ov.get("position")            or cfg.get("position",        "R2L"),
                 str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
-                "3600",   # duration — our loop re-sends before this expires
+                duration,
                 message,
             ]
         }
@@ -361,7 +370,7 @@ class PanelController:
             log.info("Panel '%s' [%s] song=%r est=%.1fs: %s",
                      cfg.get("name"), mode, song_key or "—", self._est_scroll_sec, message)
             host    = self.gcfg.get("fpp_host", "localhost")
-            payload = self._build_effect_payload(message, overrides)
+            payload = self._build_effect_payload(message, overrides, self._est_scroll_sec)
             if fpp_post_command(host, payload) is not None:
                 self.current_message = message
                 self.current_mode = mode
