@@ -260,7 +260,7 @@ async function loadStatus() {
                   <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary);">Live Preview</span>
                   <span id="previewbtn_${escHtml(p.id)}" style="font-size:0.75em;">${collapsed ? '&#9654;' : '&#9660;'}</span>
                 </div>
-                <canvas id="preview_${escHtml(p.id)}" class="ms-panel-preview d-block mt-1" style="background:#111;image-rendering:pixelated;${previewEnabled && !collapsed ? '' : 'display:none;'}"></canvas>
+                <canvas id="preview_${escHtml(p.id)}" class="ms-panel-preview d-block mt-1" style="background:#111;image-rendering:pixelated;max-width:100%;${previewEnabled && !collapsed ? '' : 'display:none;'}"></canvas>
               </div>`;
             })() : ''}
           </div>
@@ -1054,7 +1054,7 @@ async function previewTickPanel(panelId) {
   } catch(e) {}
 }
 
-const _PREV_MAX_W = 600, _PREV_MAX_H = 200;
+const _PREV_MAX_W = 400, _PREV_MAX_H = 200;
 function renderModelToCanvas(canvas, data, w, h) {
   const scale = Math.max(1, Math.floor(Math.min(_PREV_MAX_W / w, _PREV_MAX_H / h)));
   const cw = w * scale, ch = h * scale;
