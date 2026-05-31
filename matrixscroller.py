@@ -590,7 +590,7 @@ class MatrixScrollerDaemon:
             # Manual override wins
             override = overrides.get(pid)
             if override is not None:
-                panel.start(override, "override")
+                panel.start(override, "override", model_widths=self._model_widths)
                 continue
 
             media_enabled    = panel.cfg.get("media",    {}).get("enabled", True)
