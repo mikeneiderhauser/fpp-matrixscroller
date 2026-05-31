@@ -21,9 +21,14 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
 
   <!-- Panel Status -->
   <div class="card mb-3">
-    <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
       <strong>Panel Status</strong>
-      <button class="btn btn-sm btn-outline-secondary" onclick="loadStatus()">&#8635; Refresh</button>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <label class="form-label form-label-sm mb-0 text-muted small" for="previewRate">Preview rate (ms)</label>
+        <input type="number" id="previewRate" class="form-control form-control-sm" style="width:72px;" value="100" min="50" max="5000" step="50" onchange="updatePreviewRate()">
+        <button id="btn-preview-toggle" class="btn btn-sm btn-outline-secondary" onclick="togglePreview()">&#9654; Preview</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="loadStatus()">&#8635; Refresh</button>
+      </div>
     </div>
     <div class="card-body">
       <div id="ms-status-grid" class="row g-2"><p class="text-muted">Loading…</p></div>
@@ -248,10 +253,21 @@ async function loadStatus() {
               <button class="btn btn-outline-secondary" onclick="sendOverride('${escHtml(p.id)}')">Send</button>
               <button class="btn btn-outline-secondary" onclick="clearOverride('${escHtml(p.id)}')">Clear</button>
             </div>
+            ${p.model ? (() => {
+              const collapsed = previewCollapsed.has(p.id);
+              return `<div class="ms-preview-wrap mt-2" id="previewwrap_${escHtml(p.id)}" style="${previewEnabled ? '' : 'display:none;'}">
+                <div class="d-flex align-items-center justify-content-between" style="cursor:pointer;" onclick="togglePanelCollapse('${escHtml(p.id)}')">
+                  <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary);">Live Preview</span>
+                  <span id="previewbtn_${escHtml(p.id)}" style="font-size:0.75em;">${collapsed ? '&#9654;' : '&#9660;'}</span>
+                </div>
+                <canvas id="preview_${escHtml(p.id)}" class="ms-panel-preview d-block mt-1" style="background:#111;image-rendering:pixelated;${previewEnabled && !collapsed ? '' : 'display:none;'}"></canvas>
+              </div>`;
+            })() : ''}
           </div>
         </div>
       </div>`;
     }).join('');
+    if (previewEnabled) { updatePreviewVisibility(); previewTick(); }
   } catch(e) {
     daemonOnline = false;
     updateDaemonBadge();
@@ -949,4 +965,112 @@ async function init() {
 }
 
 init();
+
+// ── Live Preview ──────────────────────────────────────────────────────────────
+let previewEnabled  = false;
+let previewTimer    = null;
+let previewRateMs   = 100;
+const previewCollapsed = new Set();
+
+function togglePreview() {
+  previewEnabled = !previewEnabled;
+  const btn = document.getElementById('btn-preview-toggle');
+  if (previewEnabled) {
+    btn.innerHTML = '&#9646; Preview';
+    btn.classList.replace('btn-outline-secondary', 'btn-success');
+    updatePreviewVisibility();
+    startPreviewTimer();
+  } else {
+    btn.innerHTML = '&#9654; Preview';
+    btn.classList.replace('btn-success', 'btn-outline-secondary');
+    stopPreviewTimer();
+    document.querySelectorAll('.ms-preview-wrap').forEach(w => w.style.display = 'none');
+  }
+}
+
+function togglePanelCollapse(panelId) {
+  if (previewCollapsed.has(panelId)) previewCollapsed.delete(panelId);
+  else previewCollapsed.add(panelId);
+  updatePreviewVisibility();
+  if (previewEnabled && !previewCollapsed.has(panelId)) previewTickPanel(panelId);
+}
+
+function updatePreviewVisibility() {
+  (config.panels || []).forEach(p => {
+    const wrap   = document.getElementById(`previewwrap_${p.id}`);
+    const canvas = document.getElementById(`preview_${p.id}`);
+    const btn    = document.getElementById(`previewbtn_${p.id}`);
+    if (!wrap) return;
+    const collapsed = previewCollapsed.has(p.id);
+    wrap.style.display   = previewEnabled ? '' : 'none';
+    if (canvas) canvas.style.display = (previewEnabled && !collapsed) ? 'block' : 'none';
+    if (btn)    btn.innerHTML = collapsed ? '&#9654;' : '&#9660;';
+  });
+}
+
+function updatePreviewRate() {
+  const val = parseInt(document.getElementById('previewRate')?.value) || 100;
+  previewRateMs = Math.max(50, Math.min(5000, val));
+  if (previewEnabled) { stopPreviewTimer(); startPreviewTimer(); }
+}
+
+function startPreviewTimer() {
+  stopPreviewTimer();
+  previewTick();
+  previewTimer = setInterval(previewTick, previewRateMs);
+}
+
+function stopPreviewTimer() {
+  if (previewTimer) { clearInterval(previewTimer); previewTimer = null; }
+}
+
+async function previewTick() {
+  if (!previewEnabled) return;
+  await Promise.all((config.panels || []).map(p => previewTickPanel(p.id)));
+}
+
+async function previewTickPanel(panelId) {
+  const p = (config.panels || []).find(p => p.id === panelId);
+  if (!p || !p.model) return;
+  if (previewCollapsed.has(panelId)) return;
+  const canvas = document.getElementById(`preview_${panelId}`);
+  if (!canvas || canvas.style.display === 'none') return;
+  const m = models.find(m => _modelName(m) === p.model);
+  if (!m) return;
+  const w = parseInt(m.Width || m.width || 0);
+  if (!w) return;
+  // Use ChannelCount for height — avoids off-by-1 from data padding
+  const chanCount   = parseInt(m.ChannelCount    || m.channelCount    || 0);
+  const chanPerNode = parseInt(m.ChannelCountPerNode || m.channelCountPerNode || 3);
+  const h = chanCount ? Math.round(chanCount / chanPerNode / w)
+                      : parseInt(m.Height || m.height || 0);
+  if (!h) return;
+  try {
+    const resp = await fetch(`/api/overlays/model/${encodeURIComponent(p.model)}/data`);
+    if (!resp.ok) return;
+    const d = await resp.json();
+    if (!Array.isArray(d.data) || d.data.length < w * h * 3) return;
+    renderModelToCanvas(canvas, d.data, w, h);
+  } catch(e) {}
+}
+
+const _PREV_MAX_W = 600, _PREV_MAX_H = 200;
+function renderModelToCanvas(canvas, data, w, h) {
+  const scale = Math.max(1, Math.floor(Math.min(_PREV_MAX_W / w, _PREV_MAX_H / h)));
+  const cw = w * scale, ch = h * scale;
+  if (canvas.width !== cw || canvas.height !== ch) { canvas.width = cw; canvas.height = ch; }
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, cw, ch);
+  for (let row = 0; row < h; row++) {
+    for (let col = 0; col < w; col++) {
+      const i = (row * w + col) * 3;
+      const r = data[i], g = data[i+1], b = data[i+2];
+      if (r || g || b) {
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(col * scale, row * scale, scale, scale);
+      }
+    }
+  }
+}
 </script>
