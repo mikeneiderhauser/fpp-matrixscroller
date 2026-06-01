@@ -512,7 +512,7 @@ function renderPanel(panelIdx, pcfg) {
     </div>
 
     <div class="ms-section-lbl">Display</div>
-    <div class="ms-so-fields mb-3">
+    <div class="ms-so-fields mb-2">
       <div>
         <label class="form-label form-label-sm">Color</label>
         <input type="color" id="p${panelIdx}_color" class="form-control form-control-sm form-control-color w-100">
@@ -532,6 +532,17 @@ function renderPanel(panelIdx, pcfg) {
       <div>
         <label class="form-label form-label-sm">Pixels/Sec</label>
         <input type="number" id="p${panelIdx}_pps" class="form-control form-control-sm" min="1" max="200">
+      </div>
+    </div>
+    <div class="d-flex align-items-end gap-3 mb-3">
+      <div style="min-width:14rem">
+        <label class="form-label form-label-sm">Text Mode</label>
+        <select id="p${panelIdx}_text_mode" class="form-select form-select-sm">
+          <option value="H">Horizontal (default)</option>
+          <option value="90CW">Rotated 90° CW</option>
+          <option value="270CW">Rotated 270° CW</option>
+          <option value="Vert">Vertical Stack</option>
+        </select>
       </div>
     </div>
 
@@ -595,6 +606,9 @@ function applyPanelToUI(idx, pcfg) {
   const posSel = get(`p${idx}_position`);
   if (posSel) posSel.value = pcfg.position || 'R2L';
 
+  const tmSel = get(`p${idx}_text_mode`);
+  if (tmSel) tmSel.value = pcfg.text_mode || 'H';
+
   updateModelDims(idx);
 
   ['media','no_media'].forEach(mode => {
@@ -629,6 +643,7 @@ function collectPanel(idx) {
     font:           get(`p${idx}_font`)?.value         || 'DejaVuSans',
     fontsize:       parseInt(get(`p${idx}_fontsize`).value) || 10,
     position:       get(`p${idx}_position`)?.value     || 'R2L',
+    text_mode:      get(`p${idx}_text_mode`)?.value    || 'H',
     pixelspersecond:parseInt(get(`p${idx}_pps`).value) || 15,
     media:{}, no_media:{},
   };
@@ -664,7 +679,7 @@ function addPanel() {
   config.panels = collectAllPanels();
   config.panels.push({
     id:`panel_${newIdx+1}`, name:`Panel ${newIdx+1}`, enabled:true, model:'',
-    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', pixelspersecond:15,
+    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', text_mode:'H', pixelspersecond:15,
     media:{enabled:true,pre_roll:{enabled:false,text:''},tune_to:{enabled:false,text:'Tune To:'},
            artist:{enabled:true},title:{enabled:true},album:{enabled:false},
            post_roll:{enabled:false,text:''},gap:{enabled:true,text:' | '}},

@@ -270,7 +270,12 @@ class PanelController:
                 ov.get("position")            or cfg.get("position",        "R2L"),
                 str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
                 duration,
-                message,
+                # Only inject TextMode arg when non-default so this plugin remains
+                # usable on unpatched FPP (which expects Text at args[7], not args[8]).
+                # A patched FPP binary is required to use 90CW, 270CW, or Vert.
+                *([ov.get("text_mode") or cfg.get("text_mode", "H"), message]
+                  if (ov.get("text_mode") or cfg.get("text_mode", "H")) != "H"
+                  else [message]),
             ]
         }
 
@@ -291,18 +296,36 @@ class PanelController:
 
     def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None, model_heights: dict = None) -> float:
         """Estimate seconds for one full scroll pass of message across the matrix."""
-        cfg = self.cfg
-        ov  = overrides or {}
+        cfg        = self.cfg
+        ov         = overrides or {}
         fontsize   = int(ov.get("fontsize") or cfg.get("fontsize", 10))
         pps        = max(1.0, float(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)))
         position   = str(ov.get("position") or cfg.get("position", "R2L"))
+        text_mode  = str(ov.get("text_mode") or cfg.get("text_mode", "H"))
         model_name = cfg.get("model", "")
+        matrix_w   = float((model_widths  or {}).get(model_name) or 256)
+        matrix_h   = float((model_heights or {}).get(model_name) or 256)
+
+        if text_mode == "Vert":
+            # Each character occupies its own line; travel distance is numChars *
+            # line height + the panel height (scroll direction expected to be B2T).
+            n = max(1, len(message))
+            return (n * fontsize + matrix_h) / pps
+
+        if text_mode in ("90CW", "270CW"):
+            # After rotation the bitmap is transposed: its "rows" dimension equals
+            # the original text width, its "cols" dimension equals the font height.
+            if position in ("B2T", "T2B"):
+                # Scroll vertically through the rotated text width.
+                travel = len(message) * fontsize * 0.65 + matrix_h
+            else:
+                # Scroll horizontally through the rotated text height (≈ fontsize).
+                travel = fontsize + matrix_w
+            return travel / pps
+
         if position in ("B2T", "T2B"):
-            # Vertical scroll: text band height (fontsize) + matrix height is the travel distance
-            matrix_h = float((model_heights or {}).get(model_name) or 256)
             return (fontsize + matrix_h) / pps
-        matrix_w = float((model_widths or {}).get(model_name) or 256)
-        msg_px   = len(message) * fontsize * 0.65
+        msg_px = len(message) * fontsize * 0.65
         return (msg_px + matrix_w) / pps
 
     def start(self, message: str, mode: str, song_key: str = "", seconds_remaining: float = 0.0, model_widths: dict = None, model_heights: dict = None):

@@ -1,0 +1,206 @@
+diff --git a/src/overlays/PixelOverlayEffects.cpp b/src/overlays/PixelOverlayEffects.cpp
+index f7e9e06..bf6b693 100644
+--- a/src/overlays/PixelOverlayEffects.cpp
++++ b/src/overlays/PixelOverlayEffects.cpp
+@@ -499,6 +499,9 @@ public:
+         args.push_back(CommandArg("Position", "string", "Position").setContentList({ "Center", "Right to Left", "Left to Right", "Bottom to Top", "Top to Bottom" }));
+         args.push_back(CommandArg("Speed", "range", "Scroll Speed").setRange(0, 200).setDefaultValue("10"));
+         args.push_back(CommandArg("Duration", "int", "Duration").setRange(-1, 2000).setDefaultValue("0"));
++        args.push_back(CommandArg("TextMode", "string", "Text Mode")
++            .setContentList({ "H", "90CW", "270CW", "Vert" })
++            .setDefaultValue("H"));
+ 
+         // keep text as last argument if possible as the MQTT commands will, by default, use the payload of the mqtt
+         // msg as the last argument.  Thus, this allows all of the above to be topic paths, but the text to be
+@@ -532,6 +535,44 @@ public:
+         return "Center";
+     }
+ 
++    // Rotate a flat RGB byte buffer 90° clockwise.
++    // srcW/srcH are the original dimensions; returned buffer has dims srcH × srcW.
++    static uint8_t* rotateBuffer90CW(const uint8_t* src, int srcW, int srcH) {
++        int dstW = srcH, dstH = srcW;
++        uint8_t* dst = (uint8_t*)malloc(dstW * dstH * 3);
++        for (int sy = 0; sy < srcH; sy++) {
++            for (int sx = 0; sx < srcW; sx++) {
++                int si = (sy * srcW + sx) * 3;
++                int dx = dstW - 1 - sy;
++                int dy = sx;
++                int di = (dy * dstW + dx) * 3;
++                dst[di]     = src[si];
++                dst[di + 1] = src[si + 1];
++                dst[di + 2] = src[si + 2];
++            }
++        }
++        return dst;
++    }
++
++    // Rotate a flat RGB byte buffer 270° clockwise (= 90° CCW).
++    // srcW/srcH are the original dimensions; returned buffer has dims srcH × srcW.
++    static uint8_t* rotateBuffer270CW(const uint8_t* src, int srcW, int srcH) {
++        int dstW = srcH, dstH = srcW;
++        uint8_t* dst = (uint8_t*)malloc(dstW * dstH * 3);
++        for (int sy = 0; sy < srcH; sy++) {
++            for (int sx = 0; sx < srcW; sx++) {
++                int si = (sy * srcW + sx) * 3;
++                int dx = sy;
++                int dy = dstH - 1 - sx;
++                int di = (dy * dstW + dx) * 3;
++                dst[di]     = src[si];
++                dst[di + 1] = src[si + 1];
++                dst[di + 2] = src[si + 2];
++            }
++        }
++        return dst;
++    }
++
+     void doText(PixelOverlayModel* m,
+                 const std::string& msg,
+                 int r, int g, int b,
+@@ -541,7 +582,8 @@ public:
+                 const std::string& position,
+                 int pixelsPerSecond,
+                 const std::string& autoEnable,
+-                int duration) {
++                int duration,
++                const std::string& textMode) {
+         bool disableWhenDone = false;
+         PixelOverlayState st(autoEnable);
+         if ((st.getState() != PixelOverlayState::PixelState::Disabled) && (m->getState().getState() == PixelOverlayState::PixelState::Disabled)) {
+@@ -549,6 +591,17 @@ public:
+             disableWhenDone = true;
+         }
+ 
++        // "Vert" mode: stack each character on its own line so text scrolls
++        // vertically as individual characters rather than as a horizontal band.
++        std::string renderMsg = msg;
++        if (textMode == "Vert") {
++            renderMsg.clear();
++            for (size_t i = 0; i < msg.size(); i++) {
++                if (i > 0) renderMsg += '\n';
++                renderMsg += msg[i];
++            }
++        }
++
+         Magick::Image* image = new Magick::Image(Magick::Geometry(m->getWidth(), m->getHeight()), Magick::Color("black"));
+         image->quiet(true);
+         image->depth(8);
+@@ -561,22 +614,22 @@ public:
+ 
+         int lines = 1;
+         int last = 0;
+-        for (int x = 0; x < msg.length(); x++) {
+-            if (msg[x] == '\n' || ((x < msg.length() - 1) && msg[x] == '\\' && msg[x + 1] == 'n')) {
++        for (int x = 0; x < renderMsg.length(); x++) {
++            if (renderMsg[x] == '\n' || ((x < renderMsg.length() - 1) && renderMsg[x] == '\\' && renderMsg[x + 1] == 'n')) {
+                 lines++;
+-                std::string newM = msg.substr(last, x);
++                std::string newM = renderMsg.substr(last, x);
+                 Magick::TypeMetric metrics;
+                 image->fontTypeMetrics(newM, &metrics);
+                 maxWid = std::max(maxWid, (int)metrics.textWidth());
+                 totalHi += (int)metrics.textHeight();
+-                if (msg[x] == '\n') {
++                if (renderMsg[x] == '\n') {
+                     last = x + 1;
+                 } else {
+                     last = x + 2;
+                 }
+             }
+         }
+-        std::string newM = msg.substr(last);
++        std::string newM = renderMsg.substr(last);
+         Magick::TypeMetric metrics;
+         image->fontTypeMetrics(newM, &metrics);
+         maxWid = std::max(maxWid, (int)metrics.textWidth());
+@@ -597,7 +650,7 @@ public:
+                                            Magick::Color::scaleDoubleToQuantum(rb)));
+             image->antiAlias(antialias);
+             image->strokeAntiAlias(antialias);
+-            image->annotate(msg, Magick::CenterGravity);
++            image->annotate(renderMsg, Magick::CenterGravity);
+             Magick::Blob blob;
+             image->write(&blob);
+ 
+@@ -633,7 +686,7 @@ public:
+                                            Magick::Color::scaleDoubleToQuantum(rb)));
+             image2.antiAlias(antialias);
+             image2.strokeAntiAlias(antialias);
+-            image2.annotate(msg, Magick::CenterGravity);
++            image2.annotate(renderMsg, Magick::CenterGravity);
+ 
+             double y = (m->getHeight() / 2.0) - ((totalHi) / 2.0);
+             double x = (m->getWidth() / 2.0) - (maxWid / 2.0);
+@@ -670,12 +723,37 @@ public:
+                 }
+             }
+ 
++            // Final bitmap dimensions and starting position — may be updated by rotation.
++            int finalCols = (int)image2.columns();
++            int finalRows = (int)image2.rows();
++            double finalX = x;
++            double finalY = y;
++
++            if (textMode == "90CW" || textMode == "270CW") {
++                int srcW = finalCols, srcH = finalRows;
++                uint8_t* rotated = (textMode == "90CW")
++                    ? rotateBuffer90CW(newData, srcW, srcH)
++                    : rotateBuffer270CW(newData, srcW, srcH);
++                free(newData);
++                newData = rotated;
++                // After 90°/270° rotation the width and height are swapped.
++                finalCols = srcH;
++                finalRows = srcW;
++                // Recalculate starting position using the rotated dimensions.
++                finalX = (m->getWidth()  / 2.0) - (finalCols / 2.0);
++                finalY = (m->getHeight() / 2.0) - (finalRows / 2.0);
++                if (position == "R2L")      finalX = m->getWidth();
++                else if (position == "L2R") finalX = -finalCols;
++                else if (position == "B2T") finalY = m->getHeight();
++                else if (position == "T2B") finalY = -finalRows;
++            }
++
+             std::unique_lock<std::recursive_mutex> lock(m->getRunningEffectMutex());
+             TextMovementEffect* ef = dynamic_cast<TextMovementEffect*>(m->getRunningEffect());
+             if (ef == nullptr) {
+                 ef = new TextMovementEffect(m);
+-                ef->x = (int)x;
+-                ef->y = (int)y;
++                ef->x = (int)finalX;
++                ef->y = (int)finalY;
+             }
+             ef->speed = pixelsPerSecond;
+             ef->disableWhenDone = disableWhenDone;
+@@ -686,8 +764,8 @@ public:
+             }
+             uint8_t* old = ef->imageData;
+             ef->imageData = newData;
+-            ef->imageDataCols = image2.columns();
+-            ef->imageDataRows = image2.rows();
++            ef->imageDataCols = finalCols;
++            ef->imageDataRows = finalRows;
+             ef->copyImageData(ef->x, ef->y);
+             m->setRunningEffect(ef, t);
+             lock.unlock();
+@@ -712,7 +790,10 @@ public:
+         std::string position = mapPosition(args[4]);
+         int pps = std::atoi(args[5].c_str());
+         int duration = std::atoi(args[6].c_str());
+-        std::string msg = args[7];
++        // args[7] is TextMode (new); args[8] is Text.  Fall back gracefully for
++        // old-style callers that omit TextMode and put Text at args[7].
++        std::string textMode = (args.size() > 8) ? args[7] : "H";
++        std::string msg = (args.size() > 8) ? args[8] : args[7];
+ 
+         doText(model,
+                msg,
+@@ -725,7 +806,8 @@ public:
+                position,
+                pps,
+                autoEnable,
+-               duration);
++               duration,
++               textMode);
+         return true;
+     }
+ };
