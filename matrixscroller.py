@@ -275,25 +275,37 @@ class PanelController:
         }
 
     def _stop_effect(self):
-        """Disable the overlay model via FPP's state API."""
+        """Stop any running effect and disable the overlay model."""
         host  = self.gcfg.get("fpp_host", "localhost")
         model = self.cfg.get("model", "")
         if not model:
             return
+        # Stop the running effect so FPP destroys the TextMovementEffect object.
+        # Without this, FPP reuses the effect and carries over stale x/y position
+        # on the next send, causing text to start mid-scroll instead of from the edge.
+        fpp_post_command(host, {
+            "command": "Overlay Model Effect",
+            "args": [model, "false", "Stop Effects"],
+        })
         fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
-    def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None) -> float:
+    def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None, model_heights: dict = None) -> float:
         """Estimate seconds for one full scroll pass of message across the matrix."""
         cfg = self.cfg
         ov  = overrides or {}
-        fontsize = int(ov.get("fontsize") or cfg.get("fontsize", 10))
-        pps      = max(1.0, float(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)))
+        fontsize   = int(ov.get("fontsize") or cfg.get("fontsize", 10))
+        pps        = max(1.0, float(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)))
+        position   = str(ov.get("position") or cfg.get("position", "R2L"))
         model_name = cfg.get("model", "")
+        if position in ("B2T", "T2B"):
+            # Vertical scroll: text band height (fontsize) + matrix height is the travel distance
+            matrix_h = float((model_heights or {}).get(model_name) or 256)
+            return (fontsize + matrix_h) / pps
         matrix_w = float((model_widths or {}).get(model_name) or 256)
-        msg_px   = len(message) * fontsize * 0.6
+        msg_px   = len(message) * fontsize * 0.65
         return (msg_px + matrix_w) / pps
 
-    def start(self, message: str, mode: str, song_key: str = "", seconds_remaining: float = 0.0, model_widths: dict = None):
+    def start(self, message: str, mode: str, song_key: str = "", seconds_remaining: float = 0.0, model_widths: dict = None, model_heights: dict = None):
         """Send the scroll command, looping when the previous pass is estimated to have finished."""
         with self._lock:
             if not self.cfg.get("enabled", True):
@@ -370,10 +382,13 @@ class PanelController:
                     log.info("Panel '%s' measured scroll: %.1fs per pass",
                              cfg.get("name"), self._measured_scroll_sec)
 
-            self._est_scroll_sec = self._calc_scroll_sec(message, ov, model_widths)
+            self._est_scroll_sec = self._calc_scroll_sec(message, ov, model_widths, model_heights)
             log.info("Panel '%s' [%s] song=%r est=%.1fs: %s",
                      cfg.get("name"), mode, song_key or "—", self._est_scroll_sec, message)
             host    = self.gcfg.get("fpp_host", "localhost")
+            # Always stop any running effect first so FPP creates a fresh
+            # TextMovementEffect with correct starting position on the next send.
+            self._stop_effect()
             payload = self._build_effect_payload(message, overrides, self._est_scroll_sec)
             if fpp_post_command(host, payload) is not None:
                 self.current_message = message
@@ -454,6 +469,7 @@ class MatrixScrollerDaemon:
         self._message_overrides: Dict[str, Optional[str]] = {}
         self._current_song = ""
         self._model_widths: Dict[str, int] = {}   # model name → pixel width from FPP
+        self._model_heights: Dict[str, int] = {}  # model name → pixel height from FPP
         self._model_widths_at: float = 0.0
         self._media_meta: dict = {}               # format.tags for current song
         self._media_meta_key: str = ""            # song_key for which meta was fetched
@@ -533,11 +549,21 @@ class MatrixScrollerDaemon:
         pre = time.monotonic()
         if pre - self._model_widths_at > 60:
             fpp_models = get_fpp_models(host)
-            self._model_widths = {
-                m.get("Name") or m.get("name", ""): int(m.get("Width") or m.get("width") or 0)
-                for m in fpp_models if isinstance(m, dict)
-                if (m.get("Name") or m.get("name")) and (m.get("Width") or m.get("width"))
-            }
+            self._model_widths = {}
+            self._model_heights = {}
+            for m in fpp_models:
+                if not isinstance(m, dict):
+                    continue
+                name = m.get("Name") or m.get("name", "")
+                w = int(m.get("Width") or m.get("width") or 0)
+                if not name or not w:
+                    continue
+                self._model_widths[name] = w
+                cc  = int(m.get("ChannelCount") or m.get("channelCount") or 0)
+                cpn = int(m.get("ChannelCountPerNode") or m.get("channelCountPerNode") or 3)
+                h = int(cc / cpn / w) if (cc and cpn) else int(m.get("Height") or m.get("height") or 0)
+                if h:
+                    self._model_heights[name] = h
             self._model_widths_at = pre
             if self._model_widths:
                 log.debug("Model widths: %s", self._model_widths)
@@ -590,7 +616,7 @@ class MatrixScrollerDaemon:
             # Manual override wins
             override = overrides.get(pid)
             if override is not None:
-                panel.start(override, "override", model_widths=self._model_widths)
+                panel.start(override, "override", model_widths=self._model_widths, model_heights=self._model_heights)
                 continue
 
             media_enabled    = panel.cfg.get("media",    {}).get("enabled", True)
@@ -606,7 +632,7 @@ class MatrixScrollerDaemon:
                         if so.get(field):
                             meta_for_panel[field] = _sanitize_text(so[field])
                     msg = build_message(panel.cfg, "media", meta_for_panel)
-                    panel.start(msg, "media", song_key, seconds_remaining, self._model_widths)
+                    panel.start(msg, "media", song_key, seconds_remaining, self._model_widths, self._model_heights)
                 else:
                     panel.stop()
             else:
@@ -618,7 +644,7 @@ class MatrixScrollerDaemon:
                 if elapsed >= no_media_timeout:
                     if no_media_enabled:
                         msg = build_message(panel.cfg, "no_media")
-                        panel.start(msg, "no_media", model_widths=self._model_widths)
+                        panel.start(msg, "no_media", model_widths=self._model_widths, model_heights=self._model_heights)
                     else:
                         panel.stop()
                 # else: still in grace period, leave media overlay running
