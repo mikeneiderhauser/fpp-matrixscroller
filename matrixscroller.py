@@ -275,11 +275,18 @@ class PanelController:
         }
 
     def _stop_effect(self):
-        """Disable the overlay model via FPP's state API."""
+        """Stop any running effect and disable the overlay model."""
         host  = self.gcfg.get("fpp_host", "localhost")
         model = self.cfg.get("model", "")
         if not model:
             return
+        # Stop the running effect so FPP destroys the TextMovementEffect object.
+        # Without this, FPP reuses the effect and carries over stale x/y position
+        # on the next send, causing text to start mid-scroll instead of from the edge.
+        fpp_post_command(host, {
+            "command": "Overlay Model Effect",
+            "args": [model, "false", "Stop Effects"],
+        })
         fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
     def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None, model_heights: dict = None) -> float:
@@ -379,6 +386,9 @@ class PanelController:
             log.info("Panel '%s' [%s] song=%r est=%.1fs: %s",
                      cfg.get("name"), mode, song_key or "—", self._est_scroll_sec, message)
             host    = self.gcfg.get("fpp_host", "localhost")
+            # Always stop any running effect first so FPP creates a fresh
+            # TextMovementEffect with correct starting position on the next send.
+            self._stop_effect()
             payload = self._build_effect_payload(message, overrides, self._est_scroll_sec)
             if fpp_post_command(host, payload) is not None:
                 self.current_message = message
