@@ -69,10 +69,7 @@ function fppmatrixscrollerDaemonRequest($path, $method = 'GET') {
 }
 
 function fppmatrixscrollerFonts() {
-    $resp = @file_get_contents('http://localhost/api/overlays/fonts');
-    if ($resp === false) return json(array());
-    $data = json_decode($resp, true);
-    return json(is_array($data) ? $data : array());
+    return fppmatrixscrollerDaemonRequest('fonts');
 }
 
 function fppmatrixscrollerMusic() {

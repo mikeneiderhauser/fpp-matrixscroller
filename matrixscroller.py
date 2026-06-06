@@ -17,7 +17,7 @@ import unicodedata
 import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from urllib.parse import unquote, quote, parse_qs
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -119,6 +119,54 @@ def fpp_put(host: str, path: str, payload: dict) -> bool:
     except Exception as e:
         log.debug("FPP PUT %s failed: %s", path, e)
         return False
+
+
+# ── Font detection ────────────────────────────────────────────────────────────
+
+# Mirrors the directories FPP's PixelOverlayManager::loadFonts() scans.
+_FONT_DIRS = [
+    "/usr/share/fonts/truetype/",
+    "/usr/share/fonts/X11/Type1/",
+    "/usr/local/share/fonts/",
+    "/System/Library/fonts/",  # macOS / dev environments
+]
+_FONT_EXTENSIONS = {".ttf", ".pfb"}
+
+_detected_fonts: Optional[List[str]] = None
+_detected_fonts_lock = threading.Lock()
+
+
+def _scan_font_dir(directory: str, found: dict):
+    """Recursively collect {name: path} for font files, skipping symlinks."""
+    try:
+        for entry in os.scandir(directory):
+            if entry.is_symlink():
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                _scan_font_dir(entry.path + "/", found)
+            elif entry.is_file(follow_symlinks=False):
+                base, ext = os.path.splitext(entry.name)
+                if ext.lower() in _FONT_EXTENSIONS:
+                    found[base] = entry.path
+    except OSError:
+        pass
+
+
+def detect_fonts() -> List[str]:
+    """
+    Return a sorted list of font names that have actual files on disk in the
+    same directories FPP scans. Results are cached after the first call.
+    """
+    global _detected_fonts
+    with _detected_fonts_lock:
+        if _detected_fonts is not None:
+            return _detected_fonts
+        found: dict = {}
+        for d in _FONT_DIRS:
+            _scan_font_dir(d, found)
+        _detected_fonts = sorted(found.keys())
+        log.info("Font detection: %d fonts found on disk", len(_detected_fonts))
+        return _detected_fonts
 
 
 def get_fpp_media_meta(host: str, filename: str) -> dict:
@@ -823,6 +871,9 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/plugin/matrixscroller/models":
             self._send_json(200, _daemon.get_models())
+
+        elif path == "/api/plugin/matrixscroller/fonts":
+            self._send_json(200, detect_fonts())
 
         elif path == "/api/plugin/matrixscroller/backups":
             self._send_json(200, _daemon.list_backups())
