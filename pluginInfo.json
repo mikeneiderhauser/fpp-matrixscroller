@@ -22,7 +22,7 @@
 		},
 		{
 			"minFPPVersion": "10.0",
-			"maxFPPVersion": "10.99",
+			"maxFPPVersion": "11.0",
 			"branch": "bugfix",
 			"sha": ""
 		}
