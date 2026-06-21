@@ -73,6 +73,26 @@ def save_config(cfg: dict):
     log.info("Config saved to %s", CONFIG_PATH)
 
 
+_FPP_SETTINGS_PATH = "/home/fpp/media/settings"
+
+def apply_log_level():
+    """Set Python log level from FPP's LogLevel_Plugin setting."""
+    level_str = "info"
+    try:
+        with open(_FPP_SETTINGS_PATH) as f:
+            for line in f:
+                if line.startswith("LogLevel_Plugin"):
+                    level_str = line.split("=", 1)[1].strip().strip('"').lower()
+                    break
+    except Exception:
+        pass
+    level = (logging.DEBUG    if level_str in ("debug", "excess") else
+             logging.WARNING  if level_str == "warn"  else
+             logging.ERROR    if level_str == "error" else
+             logging.INFO)
+    logging.getLogger().setLevel(level)
+
+
 # ── FPP API helpers ───────────────────────────────────────────────────────────
 
 def fpp_get(host: str, path: str, timeout: float = 2.0) -> Optional[dict]:
@@ -178,7 +198,7 @@ def detect_fonts() -> List[str]:
         for d in _FONT_DIRS:
             _scan_font_dir(d, found)
         _detected_fonts = sorted(found.keys())
-        log.info("Font detection: %d fonts found on disk", len(_detected_fonts))
+        log.debug("Font detection: %d fonts found on disk", len(_detected_fonts))
         return _detected_fonts
 
 
@@ -417,7 +437,7 @@ class PanelController:
                         return
 
             host = self.gcfg.get("fpp_host", "localhost")
-            log.info("Panel '%s' [%s] song=%r: %s", cfg.get("name"), mode, song_key or "—", message)
+            log.debug("Panel '%s' [%s] song=%r: %s", cfg.get("name"), mode, song_key or "—", message)
             # Always stop before sending so FPP creates a fresh TextMovementEffect
             # with the correct starting position rather than reusing stale x/y state.
             self._stop_effect()
@@ -491,6 +511,7 @@ class MatrixScrollerDaemon:
 
     def __init__(self):
         self.config = load_config()
+        apply_log_level()
         self.panels: Dict[str, PanelController] = {}
         self._running = False
         self._lock = threading.Lock()
@@ -526,8 +547,9 @@ class MatrixScrollerDaemon:
 
     def reload_config(self):
         self.config = load_config()
+        apply_log_level()
         self._rebuild_panels()
-        log.info("Config reloaded")
+        log.debug("Config reloaded")
 
     def set_override(self, panel_id: str, message: Optional[str]):
         """Set or clear a manual message override for a panel."""
@@ -587,8 +609,8 @@ class MatrixScrollerDaemon:
             if filename:
                 tags = get_fpp_media_meta(host, os.path.basename(unquote(filename)))
                 self._media_meta = tags
-                log.info("Fetched media meta for '%s': %s", song_key,
-                         {k: v for k, v in tags.items() if k in ("title","artist","album","genre","date")})
+                log.debug("Fetched media meta for '%s': %s", song_key,
+                          {k: v for k, v in tags.items() if k in ("title","artist","album","genre","date")})
             else:
                 self._media_meta = {}
             self._media_meta_key = song_key
@@ -709,7 +731,7 @@ class MatrixScrollerDaemon:
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.config, f, indent=4)
-        log.info("Config backed up to %s", path)
+        log.debug("Config backed up to %s", path)
         return filename
 
     def get_backup_content(self, filename: str) -> Optional[dict]:
