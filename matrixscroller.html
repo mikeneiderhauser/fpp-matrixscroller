@@ -240,9 +240,6 @@ async function loadStatus() {
       const modeLabel = p.mode === 'media' ? 'Media Playing' : p.mode === 'no_media' ? 'Media Idle' : p.mode || 'Stopped';
       const color = p.color || '';
       const swatch = color ? `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${escHtml(color)};border:1px solid rgba(128,128,128,.3);flex-shrink:0;"></span>` : '';
-      const scrollInfo = p.scroll_sec > 0
-        ? `<span class="text-muted ms-auto" style="font-size:0.75em;white-space:nowrap;">${p.scroll_elapsed}s&thinsp;/&thinsp;${p.scroll_sec}s${p.scroll_measured ? ' ✓' : ' ~'}</span>`
-        : '';
       return `<div class="col-md-6 col-lg-4">
         <div class="card h-100">
           <div class="card-body p-2">
@@ -250,7 +247,6 @@ async function loadStatus() {
               ${swatch}
               <strong class="small">${escHtml(p.name||p.id)}</strong>
               <span class="badge ${badgeCls}">${modeLabel}</span>
-              ${scrollInfo}
             </div>
             <div class="text-muted" style="font-size:0.78em;">Model: ${escHtml(p.model||'—')}${(() => { const m = models.find(m => _modelName(m) === p.model); const d = m ? _modelDims(m) : ''; return d ? ` (${escHtml(d)})` : ''; })()}</div>
             <div class="small text-break mt-1">${escHtml(p.message||'(no message)')}</div>
