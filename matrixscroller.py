@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -26,6 +27,18 @@ CONFIG_PATH  = "/home/fpp/media/config/plugin.fpp-matrixscroller.json"
 DEFAULT_CFG  = os.path.join(PLUGIN_DIR, "config.json")
 LOG_PATH     = "/home/fpp/media/logs/fpp-matrixscroller.log"
 API_PORT     = 32329
+
+def _get_git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", PLUGIN_DIR, "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=3,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+GIT_COMMIT = _get_git_commit()
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
@@ -793,6 +806,9 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/plugin/matrixscroller/fonts":
             self._send_json(200, detect_fonts())
+
+        elif path == "/api/plugin/matrixscroller/version":
+            self._send_json(200, {"commit": GIT_COMMIT})
 
         elif path == "/api/plugin/matrixscroller/backups":
             self._send_json(200, _daemon.list_backups())

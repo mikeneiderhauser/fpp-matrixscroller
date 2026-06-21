@@ -114,6 +114,8 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
     </div>
   </div>
 
+  <div class="text-end text-muted mt-2" style="font-size:0.72em;" id="ms-version"></div>
+
 </div>
 
 <!-- Toast -->
@@ -965,6 +967,16 @@ function applyStoredTheme() {
   document.getElementById('ms-dark-btn').textContent = theme === 'dark' ? '☀' : '☾';
 }
 
+async function loadVersion() {
+  try {
+    const r = await fetch(`${API}/version`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('ms-version');
+    if (el && d.commit) el.textContent = `fpp-matrixscroller @ ${d.commit}`;
+  } catch (_) {}
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   applyStoredTheme();
@@ -973,6 +985,7 @@ async function init() {
   await loadConfig();
   await Promise.all([loadStatus(), loadBackups()]);
   await loadFppStatus();
+  loadVersion();
   setInterval(loadStatus,    10000);
   setInterval(loadFppStatus,  5000);
 }
