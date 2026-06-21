@@ -277,6 +277,7 @@ class PanelController:
         self._last_cmd_sig = ""
         self._last_sent_at: float = 0.0   # used only for the 1-second startup guard
         self._effect_active: bool = False
+        self._effect_done_at: float = 0.0  # monotonic time when effect completion was first detected
 
     def _get_song_overrides(self, song_key: str) -> dict:
         """Return the song_overrides entry matching song_key (case-insensitive, extension-optional)."""
@@ -405,7 +406,15 @@ class PanelController:
             if not content_changed:
                 # Same content: only re-send when FPP reports the effect has completed.
                 if not self._check_effect_done():
+                    self._effect_done_at = 0.0
                     return
+                # Effect is done — honour repeat_delay before restarting.
+                repeat_delay = float(cfg.get("repeat_delay", 0))
+                if repeat_delay > 0:
+                    if self._effect_done_at == 0.0:
+                        self._effect_done_at = time.monotonic()
+                    if time.monotonic() - self._effect_done_at < repeat_delay:
+                        return
 
             host = self.gcfg.get("fpp_host", "localhost")
             log.info("Panel '%s' [%s] song=%r: %s", cfg.get("name"), mode, song_key or "—", message)
@@ -419,6 +428,7 @@ class PanelController:
                 self.current_song_key = song_key
                 self._last_cmd_sig = cmd_sig
                 self._last_sent_at = time.monotonic()
+                self._effect_done_at = 0.0
                 self._effect_active = True
             else:
                 log.error("Failed to send overlay command for panel '%s'", cfg.get("name"))
@@ -431,6 +441,7 @@ class PanelController:
             self.current_song_key = ""
             self._last_cmd_sig = ""
             self._last_sent_at = 0.0
+            self._effect_done_at = 0.0
             self._effect_active = False
 
     def status(self) -> dict:
@@ -465,7 +476,13 @@ class PanelController:
             self.current_song_key = ""
             self._last_cmd_sig = ""
             self._last_sent_at = 0.0
+            self._effect_done_at = 0.0
             self._effect_active = False
+
+    def effect_is_done(self) -> bool:
+        """Public wrapper around _check_effect_done for use in poll_once."""
+        with self._lock:
+            return self._check_effect_done()
 
 
 # ── Main daemon ───────────────────────────────────────────────────────────────
@@ -623,13 +640,15 @@ class MatrixScrollerDaemon:
                     self._no_media_since[pid] = now
 
                 elapsed = now - self._no_media_since[pid]
-                if elapsed >= no_media_timeout:
+                effect_done = panel.effect_is_done()
+                if elapsed >= no_media_timeout or effect_done:
+                    # Timeout expired OR current effect already finished — don't leave matrix dark
                     if no_media_enabled:
                         msg = build_message(panel.cfg, "no_media")
                         panel.start(msg, "no_media")
                     else:
                         panel.stop()
-                # else: still in grace period, leave media overlay running
+                # else: grace period still active and effect still running — let it finish
 
     def run(self):
         self._running = True

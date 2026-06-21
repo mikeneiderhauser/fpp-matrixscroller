@@ -531,6 +531,10 @@ function renderPanel(panelIdx, pcfg) {
         <label class="form-label form-label-sm">Pixels/Sec</label>
         <input type="number" id="p${panelIdx}_pps" class="form-control form-control-sm" min="1" max="200">
       </div>
+      <div>
+        <label class="form-label form-label-sm">Repeat Delay (s)</label>
+        <input type="number" id="p${panelIdx}_repeat_delay" class="form-control form-control-sm" min="0" max="60" step="0.5">
+      </div>
     </div>
 
     <div class="ms-section-lbl">Message Fields</div>
@@ -584,8 +588,9 @@ function applyPanelToUI(idx, pcfg) {
   get(`p${idx}_name`).value       = pcfg.name    || '';
   get(`p${idx}_id`).value         = pcfg.id      || '';
   get(`p${idx}_color`).value      = pcfg.color   || '#ff0000';
-  get(`p${idx}_fontsize`).value   = pcfg.fontsize || 10;
-  get(`p${idx}_pps`).value        = pcfg.pixelspersecond || 15;
+  get(`p${idx}_fontsize`).value      = pcfg.fontsize || 10;
+  get(`p${idx}_pps`).value           = pcfg.pixelspersecond || 15;
+  get(`p${idx}_repeat_delay`).value  = pcfg.repeat_delay ?? 0;
 
   const fontSel = get(`p${idx}_font`);
   if (fontSel) fontSel.value = pcfg.font || '';
@@ -625,9 +630,10 @@ function collectPanel(idx) {
     model:          get(`p${idx}_model`)?.value        || '',
     color:          get(`p${idx}_color`).value.trim()  || '#ff0000',
     font:           get(`p${idx}_font`)?.value         || 'DejaVuSans',
-    fontsize:       parseInt(get(`p${idx}_fontsize`).value) || 10,
-    position:       get(`p${idx}_position`)?.value     || 'R2L',
-    pixelspersecond:parseInt(get(`p${idx}_pps`).value) || 15,
+    fontsize:       parseInt(get(`p${idx}_fontsize`).value)      || 10,
+    position:       get(`p${idx}_position`)?.value               || 'R2L',
+    pixelspersecond:parseInt(get(`p${idx}_pps`).value)           || 15,
+    repeat_delay:   parseFloat(get(`p${idx}_repeat_delay`).value) || 0,
     media:{}, no_media:{},
   };
   ['media','no_media'].forEach(mode => {
@@ -662,7 +668,7 @@ function addPanel() {
   config.panels = collectAllPanels();
   config.panels.push({
     id:`panel_${newIdx+1}`, name:`Panel ${newIdx+1}`, enabled:true, model:'',
-    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', pixelspersecond:15,
+    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', pixelspersecond:15, repeat_delay:0,
     media:{enabled:true,pre_roll:{enabled:false,text:''},tune_to:{enabled:false,text:'Tune To:'},
            artist:{enabled:true},title:{enabled:true},album:{enabled:false},
            post_roll:{enabled:false,text:''},gap:{enabled:true,text:' | '}},
