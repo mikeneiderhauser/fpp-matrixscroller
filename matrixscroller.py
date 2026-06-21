@@ -334,7 +334,9 @@ class PanelController:
         data = fpp_get(host, f"/api/overlays/model/{quote(model, safe='')}")
         if data is None:
             return False  # FPP unreachable; assume still running
-        return int(data.get("State", data.get("state", -1))) == 0
+        # FPP returns effectRunning (bool) and isActive (0/1) — not a "State" field.
+        # effectRunning=false means the scroll effect has finished.
+        return not data.get("effectRunning", True)
 
     def _stop_effect(self):
         """Stop any running effect and disable the overlay model."""
