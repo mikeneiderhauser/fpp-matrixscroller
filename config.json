@@ -1,5 +1,6 @@
 {
     "global": {
+        "schema_version": 1,
         "enable_output": true,
         "poll_interval": 1.0,
         "no_media_timeout": 5.0,
@@ -16,6 +17,7 @@
             "fontsize": 10,
             "position": "R2L",
             "pixelspersecond": 15,
+            "repeat_delay": 0,
             "media": {
                 "enabled": true,
                 "pre_roll": { "enabled": false, "text": "" },

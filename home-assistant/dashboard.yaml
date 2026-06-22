@@ -1,0 +1,92 @@
+title: Matrix Scroller
+icon: mdi:led-strip-variant
+path: matrixscroller
+type: sections
+max_columns: 2
+sections:
+  - column_span: 2
+    cards:
+      - type: entity
+        entity: binary_sensor.matrixscroller_daemon
+        name: Daemon
+        icon: mdi:server
+      - type: entity
+        entity: switch.matrixscroller_output
+        icon: mdi:led-strip-variant
+        name: Global Enable / Disable
+      - type: button
+        name: Matrix Scroller UI
+        icon: mdi:open-in-new
+        tap_action:
+          action: url
+          url_path: >-
+            http://192.168.250.20/plugin.php?_menu=content&plugin=fpp-matrixscroller&page=matrixscroller.html
+  - column_span: 2
+    cards:
+      - type: markdown
+        title: Scroller Status
+        content: |
+          {% set song = state_attr('sensor.matrixscroller_status', 'current_song') %}
+          {% set panels = state_attr('sensor.matrixscroller_status', 'panels') | default([]) %}
+          ## Now Playing
+          {% if song %}`media` — 🎵 **{{ song }}**{% else %}`no_media` — *(nothing playing)*{% endif %}
+
+          ---
+          ## Panels
+          {% if panels %}
+          {%- set ns = namespace(out='') -%}
+          {%- for p in panels -%}
+          {%- set _sep = '\n---\n' if not loop.first else '' -%}
+          {%- set _color = (p.color or '#ff0000') -%}
+          {%- set _msg = (p.message or '') -%}
+          {%- set _body = ('<font color="' + _color + '">' + _msg + '</font>') if p.running else '_disabled_' -%}
+          {%- set ns.out = ns.out + _sep + '### ' + p.name + '\n' + _body + '\n' -%}
+          {%- endfor %}
+          {{ ns.out }}
+          {% else %}
+          *No panel data — daemon may be offline.*
+          {% endif %}
+        grid_options:
+          columns: full
+  - column_span: 1
+    cards:
+      - type: entities
+        title: Global Override
+        entities:
+          - entity: input_text.matrixscroller_override
+            name: Message
+      - type: button
+        name: Send to All Panels
+        icon: mdi:message-arrow-right
+        tap_action:
+          action: call-service
+          service: script.matrixscroller_send_override
+      - type: button
+        name: Clear All Overrides
+        icon: mdi:message-off
+        tap_action:
+          action: call-service
+          service: script.matrixscroller_clear_override
+  - column_span: 1
+    cards:
+      - type: entities
+        title: Panel Override
+        entities:
+          - entity: input_select.matrixscroller_panel_select
+            name: Panel
+          - entity: input_text.matrixscroller_panel_override
+            name: Message
+      - type: button
+        name: Send to Panel
+        icon: mdi:message-arrow-right
+        tap_action:
+          action: call-service
+          service: script.matrixscroller_send_panel_override
+      - type: button
+        name: Clear Panel Override
+        icon: mdi:message-off
+        tap_action:
+          action: call-service
+          service: script.matrixscroller_clear_panel_override
+cards: []
+show_icon_and_title: true

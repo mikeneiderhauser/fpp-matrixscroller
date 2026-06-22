@@ -9,12 +9,15 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 - **Configurable message fields** — Pre-Roll, Tune To, Song Info, Post-Roll, Gap separator; each independently enabled per mode
 - **Song info order** — Title · Artist · Album, joined with ` - `; each field individually enabled
 - **Per-song overrides** — override color, font, direction, speed, and artist/title/album text for specific songs; or suppress the overlay entirely for a song
+- **Repeat delay** — configurable per-panel pause between scroll repetitions (default 0 s)
+- **Immediate media transitions** — stops the current effect and restarts immediately when the song changes; switches to no-media as soon as the current effect finishes rather than leaving the matrix dark
 - **Enable Output toggle** — suppress all overlay effects without stopping the daemon
 - **Daemon controls** — Start, Stop, and Restart the daemon from the web UI
 - **Config backup & restore** — create timestamped backups, download/upload config as JSON, restore from any saved backup
-- **REST API** — get/set config, status, manual message overrides (useful for Home Assistant automations)
+- **REST API** — get/set config, status, manual message overrides, version info (useful for Home Assistant automations)
 - **Autostart** — starts automatically on install and on every FPP daemon start via `plugin_event.sh`
-- **Web UI** — configure all panels from the FPP plugin page; dark/light mode toggle
+- **Web UI** — configure all panels from the FPP plugin page; dark/light mode toggle; git commit shown in page footer
+- **Log level integration** — respects FPP's **Settings → Logs → Plugin** log level; set to `Debug` for verbose output, `Info` for quiet operation
 
 ## Requirements
 
@@ -45,11 +48,13 @@ On first run the plugin falls back to the bundled `config.json` defaults.
 Open the plugin page in FPP's web interface. The UI includes:
 
 - **FPP Status Bar** — current song, progress bar, and embedded ID3 tags
-- **Panel Status** — live mode badge, active message, scroll timing, and manual message override per panel
+- **Panel Status** — live mode badge, active message, and manual message override per panel
 - **Panels** — full per-panel config including display settings, message fields, and per-song overrides
-- **Global Settings** — FPP host, poll interval, media idle timeout, matrixtools path, Enable Output toggle
+- **Global Settings** — FPP host, poll interval, media idle timeout, Enable Output toggle
 - **Daemon Control** — Start / Restart / Stop with live Online/Offline badge
 - **Backup & Restore** — create a timestamped server-side backup, download the current config as JSON, upload a JSON file to restore, or select a previous backup from the dropdown and restore it
+
+The current git commit hash is shown in the page footer for version identification.
 
 ## REST API
 
@@ -66,9 +71,11 @@ http://<fpp-ip>/api/plugin/fpp-matrixscroller/<endpoint>
 | POST | `config` | Update and save configuration (JSON body) |
 | POST | `reload` | Reload config from disk without restart |
 | GET | `models` | Available FPP pixel overlay models |
-| GET | `fonts` | Available matrixtools fonts |
+| GET | `fonts` | Available fonts detected on disk |
 | GET | `music` | Music files available in FPP |
+| GET | `version` | Current git commit hash of the deployed plugin |
 | POST | `message` | Send a manual text override to a panel |
+| POST | `message/all` | Send a manual text override to all panels |
 | GET | `daemon/start` | Start the daemon (if not running) |
 | POST | `daemon/restart` | Restart the daemon |
 | POST | `daemon/stop` | Stop the daemon |
@@ -125,17 +132,18 @@ When media is playing, the scroll message is built from enabled fields in this o
 
 Only enabled fields are included. The Gap text is inserted between each present field.
 
-When no media has been playing for longer than `no_media_timeout` seconds, the no-media message fields are used (no song info injected).
+When no media has been playing for longer than `no_media_timeout` seconds (or the current scroll effect finishes, whichever comes first), the no-media message fields are used.
 
 ## Config Structure
 
 ```json
 {
   "global": {
+    "schema_version": 1,
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
-    "no_media_timeout": 5.0,
+    "no_media_timeout": 5.0
   },
   "panels": [
     {
@@ -148,6 +156,7 @@ When no media has been playing for longer than `no_media_timeout` seconds, the n
       "fontsize": 10,
       "position": "R2L",
       "pixelspersecond": 15,
+      "repeat_delay": 0,
       "media": {
         "enabled": true,
         "pre_roll":  { "enabled": false, "text": "" },
@@ -183,8 +192,24 @@ When no media has been playing for longer than `no_media_timeout` seconds, the n
 }
 ```
 
+## Home Assistant Integration
+
+A ready-to-use HA integration is included in the [`home-assistant/`](home-assistant/) directory:
+
+| File | Purpose |
+|------|---------|
+| `matrixscroller_secrets.yaml` | FPP URLs — edit your IP here only |
+| `matrixscroller_package.yaml` | Drop into HA `packages/` — sensors, switches, scripts, automations |
+| `dashboard.yaml` | Lovelace dashboard view |
+
+The dashboard provides daemon online/offline status, output enable/disable toggle, now-playing display, per-panel status table, and manual message override controls. No custom cards or HACS components required.
+
+See [`home-assistant/README.md`](home-assistant/README.md) for setup instructions.
+
 ## Logs
 
 ```bash
 tail -f /home/fpp/media/logs/fpp-matrixscroller.log
 ```
+
+Log verbosity is controlled by FPP's built-in log level setting at **FPP → Settings → Logs → Plugin**. Set to `Debug` to see per-panel effect sends and config reloads; leave at `Info` (default) to log only startup, shutdown, and user-triggered actions.

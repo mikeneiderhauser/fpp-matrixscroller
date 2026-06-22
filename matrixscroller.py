@@ -59,6 +59,8 @@ def load_config() -> dict:
                 with open(path) as f:
                     cfg = json.load(f)
                 log.info("Loaded config from %s", path)
+                if _migrate_config(cfg):
+                    save_config(cfg)
                 return cfg
             except Exception as e:
                 log.error("Failed to load config from %s: %s", path, e)
@@ -71,6 +73,29 @@ def save_config(cfg: dict):
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=4)
     log.info("Config saved to %s", CONFIG_PATH)
+
+
+# ── Config migrations ─────────────────────────────────────────────────────────
+# Increment SCHEMA_VERSION and add a migration block each time the config
+# schema changes in a way that existing configs won't handle automatically.
+
+SCHEMA_VERSION = 1
+
+def _migrate_config(cfg: dict) -> bool:
+    """Apply sequential schema migrations in place. Returns True if any were applied."""
+    g = cfg.setdefault("global", {})
+    version = int(g.get("schema_version", 0))
+    migrated = False
+
+    if version < 1:
+        # v0 → v1: add repeat_delay to every panel that lacks it
+        for panel in cfg.get("panels", []):
+            panel.setdefault("repeat_delay", 0)
+        g["schema_version"] = 1
+        migrated = True
+        log.info("Config migrated to schema version 1")
+
+    return migrated
 
 
 _FPP_SETTINGS_PATH = "/home/fpp/media/settings"
@@ -341,10 +366,8 @@ class PanelController:
     def _check_effect_done(self) -> bool:
         """Return True when FPP's overlay effect has completed.
 
-        After each send, FPP transitions the model from Disabled (State=0) →
-        Active (State=2) → Disabled (State=0) when the scroll finishes.
-        We wait at least 1 s after the last send to let FPP start the effect
-        before we start polling for completion.
+        Polls GET /api/overlays/model/{name} and checks effectRunning.
+        A 1-second startup guard prevents false-positives immediately after send.
         """
         if time.monotonic() - self._last_sent_at < 1.0:
             return False  # Too soon after send; effect may not have started yet
