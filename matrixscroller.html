@@ -114,6 +114,8 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
     </div>
   </div>
 
+  <div class="text-end text-muted mt-2" style="font-size:0.72em;" id="ms-version"></div>
+
 </div>
 
 <!-- Toast -->
@@ -240,9 +242,6 @@ async function loadStatus() {
       const modeLabel = p.mode === 'media' ? 'Media Playing' : p.mode === 'no_media' ? 'Media Idle' : p.mode || 'Stopped';
       const color = p.color || '';
       const swatch = color ? `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${escHtml(color)};border:1px solid rgba(128,128,128,.3);flex-shrink:0;"></span>` : '';
-      const scrollInfo = p.scroll_sec > 0
-        ? `<span class="text-muted ms-auto" style="font-size:0.75em;white-space:nowrap;">${p.scroll_elapsed}s&thinsp;/&thinsp;${p.scroll_sec}s${p.scroll_measured ? ' ✓' : ' ~'}</span>`
-        : '';
       return `<div class="col-md-6 col-lg-4">
         <div class="card h-100">
           <div class="card-body p-2">
@@ -250,7 +249,6 @@ async function loadStatus() {
               ${swatch}
               <strong class="small">${escHtml(p.name||p.id)}</strong>
               <span class="badge ${badgeCls}">${modeLabel}</span>
-              ${scrollInfo}
             </div>
             <div class="text-muted" style="font-size:0.78em;">Model: ${escHtml(p.model||'—')}${(() => { const m = models.find(m => _modelName(m) === p.model); const d = m ? _modelDims(m) : ''; return d ? ` (${escHtml(d)})` : ''; })()}</div>
             <div class="small text-break mt-1">${escHtml(p.message||'(no message)')}</div>
@@ -533,6 +531,10 @@ function renderPanel(panelIdx, pcfg) {
         <label class="form-label form-label-sm">Pixels/Sec</label>
         <input type="number" id="p${panelIdx}_pps" class="form-control form-control-sm" min="1" max="200">
       </div>
+      <div>
+        <label class="form-label form-label-sm">Repeat Delay (s)</label>
+        <input type="number" id="p${panelIdx}_repeat_delay" class="form-control form-control-sm" min="0" max="60" step="0.5">
+      </div>
     </div>
 
     <div class="ms-section-lbl">Message Fields</div>
@@ -586,8 +588,9 @@ function applyPanelToUI(idx, pcfg) {
   get(`p${idx}_name`).value       = pcfg.name    || '';
   get(`p${idx}_id`).value         = pcfg.id      || '';
   get(`p${idx}_color`).value      = pcfg.color   || '#ff0000';
-  get(`p${idx}_fontsize`).value   = pcfg.fontsize || 10;
-  get(`p${idx}_pps`).value        = pcfg.pixelspersecond || 15;
+  get(`p${idx}_fontsize`).value      = pcfg.fontsize || 10;
+  get(`p${idx}_pps`).value           = pcfg.pixelspersecond || 15;
+  get(`p${idx}_repeat_delay`).value  = pcfg.repeat_delay ?? 0;
 
   const fontSel = get(`p${idx}_font`);
   if (fontSel) fontSel.value = pcfg.font || '';
@@ -627,9 +630,10 @@ function collectPanel(idx) {
     model:          get(`p${idx}_model`)?.value        || '',
     color:          get(`p${idx}_color`).value.trim()  || '#ff0000',
     font:           get(`p${idx}_font`)?.value         || 'DejaVuSans',
-    fontsize:       parseInt(get(`p${idx}_fontsize`).value) || 10,
-    position:       get(`p${idx}_position`)?.value     || 'R2L',
-    pixelspersecond:parseInt(get(`p${idx}_pps`).value) || 15,
+    fontsize:       parseInt(get(`p${idx}_fontsize`).value)      || 10,
+    position:       get(`p${idx}_position`)?.value               || 'R2L',
+    pixelspersecond:parseInt(get(`p${idx}_pps`).value)           || 15,
+    repeat_delay:   parseFloat(get(`p${idx}_repeat_delay`).value) || 0,
     media:{}, no_media:{},
   };
   ['media','no_media'].forEach(mode => {
@@ -664,7 +668,7 @@ function addPanel() {
   config.panels = collectAllPanels();
   config.panels.push({
     id:`panel_${newIdx+1}`, name:`Panel ${newIdx+1}`, enabled:true, model:'',
-    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', pixelspersecond:15,
+    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', pixelspersecond:15, repeat_delay:0,
     media:{enabled:true,pre_roll:{enabled:false,text:''},tune_to:{enabled:false,text:'Tune To:'},
            artist:{enabled:true},title:{enabled:true},album:{enabled:false},
            post_roll:{enabled:false,text:''},gap:{enabled:true,text:' | '}},
@@ -969,6 +973,16 @@ function applyStoredTheme() {
   document.getElementById('ms-dark-btn').textContent = theme === 'dark' ? '☀' : '☾';
 }
 
+async function loadVersion() {
+  try {
+    const r = await fetch(`${API}/version`);
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('ms-version');
+    if (el && d.commit) el.textContent = `fpp-matrixscroller @ ${d.commit}`;
+  } catch (_) {}
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   applyStoredTheme();
@@ -977,6 +991,7 @@ async function init() {
   await loadConfig();
   await Promise.all([loadStatus(), loadBackups()]);
   await loadFppStatus();
+  loadVersion();
   setInterval(loadStatus,    10000);
   setInterval(loadFppStatus,  5000);
 }

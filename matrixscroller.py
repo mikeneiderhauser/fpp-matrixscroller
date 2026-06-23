@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import signal
+import subprocess
 import sys
 import threading
 import time
@@ -17,7 +18,7 @@ import unicodedata
 import urllib.request
 import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from urllib.parse import unquote, quote, parse_qs
 
 # ── Paths ────────────────────────────────────────────────────────────────────
@@ -26,6 +27,18 @@ CONFIG_PATH  = "/home/fpp/media/config/plugin.fpp-matrixscroller.json"
 DEFAULT_CFG  = os.path.join(PLUGIN_DIR, "config.json")
 LOG_PATH     = "/home/fpp/media/logs/fpp-matrixscroller.log"
 API_PORT     = 32329
+
+def _get_git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", PLUGIN_DIR, "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=3,
+        )
+        return result.stdout.strip() if result.returncode == 0 else "unknown"
+    except Exception:
+        return "unknown"
+
+GIT_COMMIT = _get_git_commit()
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
@@ -46,6 +59,8 @@ def load_config() -> dict:
                 with open(path) as f:
                     cfg = json.load(f)
                 log.info("Loaded config from %s", path)
+                if _migrate_config(cfg):
+                    save_config(cfg)
                 return cfg
             except Exception as e:
                 log.error("Failed to load config from %s: %s", path, e)
@@ -58,6 +73,49 @@ def save_config(cfg: dict):
     with open(CONFIG_PATH, "w") as f:
         json.dump(cfg, f, indent=4)
     log.info("Config saved to %s", CONFIG_PATH)
+
+
+# ── Config migrations ─────────────────────────────────────────────────────────
+# Increment SCHEMA_VERSION and add a migration block each time the config
+# schema changes in a way that existing configs won't handle automatically.
+
+SCHEMA_VERSION = 1
+
+def _migrate_config(cfg: dict) -> bool:
+    """Apply sequential schema migrations in place. Returns True if any were applied."""
+    g = cfg.setdefault("global", {})
+    version = int(g.get("schema_version", 0))
+    migrated = False
+
+    if version < 1:
+        # v0 → v1: add repeat_delay to every panel that lacks it
+        for panel in cfg.get("panels", []):
+            panel.setdefault("repeat_delay", 0)
+        g["schema_version"] = 1
+        migrated = True
+        log.info("Config migrated to schema version 1")
+
+    return migrated
+
+
+_FPP_SETTINGS_PATH = "/home/fpp/media/settings"
+
+def apply_log_level():
+    """Set Python log level from FPP's LogLevel_Plugin setting."""
+    level_str = "info"
+    try:
+        with open(_FPP_SETTINGS_PATH) as f:
+            for line in f:
+                if line.startswith("LogLevel_Plugin"):
+                    level_str = line.split("=", 1)[1].strip().strip('"').lower()
+                    break
+    except Exception:
+        pass
+    level = (logging.DEBUG    if level_str in ("debug", "excess") else
+             logging.WARNING  if level_str == "warn"  else
+             logging.ERROR    if level_str == "error" else
+             logging.INFO)
+    logging.getLogger().setLevel(level)
 
 
 # ── FPP API helpers ───────────────────────────────────────────────────────────
@@ -121,6 +179,54 @@ def fpp_put(host: str, path: str, payload: dict) -> bool:
         return False
 
 
+# ── Font detection ────────────────────────────────────────────────────────────
+
+# Mirrors the directories FPP's PixelOverlayManager::loadFonts() scans.
+_FONT_DIRS = [
+    "/usr/share/fonts/truetype/",
+    "/usr/share/fonts/X11/Type1/",
+    "/usr/local/share/fonts/",
+    "/System/Library/fonts/",  # macOS / dev environments
+]
+_FONT_EXTENSIONS = {".ttf", ".pfb"}
+
+_detected_fonts: Optional[List[str]] = None
+_detected_fonts_lock = threading.Lock()
+
+
+def _scan_font_dir(directory: str, found: dict):
+    """Recursively collect {name: path} for font files, skipping symlinks."""
+    try:
+        for entry in os.scandir(directory):
+            if entry.is_symlink():
+                continue
+            if entry.is_dir(follow_symlinks=False):
+                _scan_font_dir(entry.path + "/", found)
+            elif entry.is_file(follow_symlinks=False):
+                base, ext = os.path.splitext(entry.name)
+                if ext.lower() in _FONT_EXTENSIONS:
+                    found[base] = entry.path
+    except OSError:
+        pass
+
+
+def detect_fonts() -> List[str]:
+    """
+    Return a sorted list of font names that have actual files on disk in the
+    same directories FPP scans. Results are cached after the first call.
+    """
+    global _detected_fonts
+    with _detected_fonts_lock:
+        if _detected_fonts is not None:
+            return _detected_fonts
+        found: dict = {}
+        for d in _FONT_DIRS:
+            _scan_font_dir(d, found)
+        _detected_fonts = sorted(found.keys())
+        log.debug("Font detection: %d fonts found on disk", len(_detected_fonts))
+        return _detected_fonts
+
+
 def get_fpp_media_meta(host: str, filename: str) -> dict:
     """Return format.tags dict from FPP's ffprobe endpoint for a media file."""
     encoded = quote(filename, safe='')
@@ -129,18 +235,6 @@ def get_fpp_media_meta(host: str, filename: str) -> dict:
         return data.get("format", {}).get("tags", {})
     return {}
 
-
-def _parse_time_str(t) -> float:
-    """Parse 'M:SS' or 'H:MM:SS' string to seconds. Returns 0.0 on failure."""
-    try:
-        parts = [int(x) for x in str(t).split(':')]
-        if len(parts) == 3:
-            return parts[0] * 3600 + parts[1] * 60 + parts[2]
-        if len(parts) == 2:
-            return parts[0] * 60 + parts[1]
-    except Exception:
-        pass
-    return 0.0
 
 
 # ── Text sanitisation ─────────────────────────────────────────────────────────
@@ -226,10 +320,9 @@ class PanelController:
         self.current_mode = ""
         self.current_song_key = ""
         self._last_cmd_sig = ""
-        self._last_sent_at: float = 0.0
-        self._est_scroll_sec: float = 0.0
-        self._measured_scroll_sec: float = 0.0
+        self._last_sent_at: float = 0.0   # used only for the 1-second startup guard
         self._effect_active: bool = False
+        self._effect_done_at: float = 0.0  # monotonic time when effect completion was first detected
 
     def _get_song_overrides(self, song_key: str) -> dict:
         """Return the song_overrides entry matching song_key (case-insensitive, extension-optional)."""
@@ -244,19 +337,10 @@ class PanelController:
                 return v
         return {}
 
-    def _build_effect_payload(self, message: str, overrides: dict = None,
-                              est_scroll_sec: float = 0.0) -> dict:
-        """Build the FPP 'Overlay Model Effect' command payload.
-
-        FPP's Text effect scrolls once and stops; it does not loop.
-        duration is set to est_scroll_sec + 15s so FPP keeps the overlay
-        active long enough for our timing loop to re-send before it expires.
-        """
+    def _build_effect_payload(self, message: str, overrides: dict = None) -> dict:
+        """Build the FPP 'Overlay Model Effect' command payload."""
         cfg = self.cfg
         ov  = overrides or {}
-        # Give FPP enough runway for one full pass plus a generous buffer so
-        # the effect never expires before our daemon re-sends.
-        duration = str(max(30, int(est_scroll_sec) + 15))
         return {
             "command": "Overlay Model Effect",
             "args": [
@@ -269,10 +353,34 @@ class PanelController:
                 "false",  # anti-alias
                 ov.get("position")            or cfg.get("position",        "R2L"),
                 str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
-                duration,
-                message,
+                "0",      # duration: unused for scrolling effects in FPP
+                # Only inject TextMode arg when non-default so this plugin remains
+                # usable on unpatched FPP (which expects Text at args[7], not args[8]).
+                # A patched FPP binary is required to use 90CW, 270CW, or Vert.
+                *([ov.get("text_mode") or cfg.get("text_mode", "H"), message]
+                  if (ov.get("text_mode") or cfg.get("text_mode", "H")) != "H"
+                  else [message]),
             ]
         }
+
+    def _check_effect_done(self) -> bool:
+        """Return True when FPP's overlay effect has completed.
+
+        Polls GET /api/overlays/model/{name} and checks effectRunning.
+        A 1-second startup guard prevents false-positives immediately after send.
+        """
+        if time.monotonic() - self._last_sent_at < 1.0:
+            return False  # Too soon after send; effect may not have started yet
+        model = self.cfg.get("model", "")
+        host  = self.gcfg.get("fpp_host", "localhost")
+        if not model:
+            return True
+        data = fpp_get(host, f"/api/overlays/model/{quote(model, safe='')}")
+        if data is None:
+            return False  # FPP unreachable; assume still running
+        # FPP returns effectRunning (bool) and isActive (0/1) — not a "State" field.
+        # effectRunning=false means the scroll effect has finished.
+        return not data.get("effectRunning", True)
 
     def _stop_effect(self):
         """Stop any running effect and disable the overlay model."""
@@ -289,24 +397,8 @@ class PanelController:
         })
         fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
-    def _calc_scroll_sec(self, message: str, overrides: dict, model_widths: dict = None, model_heights: dict = None) -> float:
-        """Estimate seconds for one full scroll pass of message across the matrix."""
-        cfg = self.cfg
-        ov  = overrides or {}
-        fontsize   = int(ov.get("fontsize") or cfg.get("fontsize", 10))
-        pps        = max(1.0, float(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)))
-        position   = str(ov.get("position") or cfg.get("position", "R2L"))
-        model_name = cfg.get("model", "")
-        if position in ("B2T", "T2B"):
-            # Vertical scroll: text band height (fontsize) + matrix height is the travel distance
-            matrix_h = float((model_heights or {}).get(model_name) or 256)
-            return (fontsize + matrix_h) / pps
-        matrix_w = float((model_widths or {}).get(model_name) or 256)
-        msg_px   = len(message) * fontsize * 0.65
-        return (msg_px + matrix_w) / pps
-
-    def start(self, message: str, mode: str, song_key: str = "", seconds_remaining: float = 0.0, model_widths: dict = None, model_heights: dict = None):
-        """Send the scroll command, looping when the previous pass is estimated to have finished."""
+    def start(self, message: str, mode: str, song_key: str = ""):
+        """Send the scroll command; re-send whenever FPP signals the effect is done."""
         with self._lock:
             if not self.cfg.get("enabled", True):
                 return
@@ -347,7 +439,6 @@ class PanelController:
                 ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15),
             ])
 
-            now = time.monotonic()
             content_changed = (
                 message  != self.current_message or
                 mode     != self.current_mode    or
@@ -355,47 +446,32 @@ class PanelController:
                 cmd_sig  != self._last_cmd_sig
             )
 
-            if content_changed:
-                # New content: always resend; reset per-song scroll measurements
-                self._measured_scroll_sec = 0.0
-            else:
-                # Same content: only resend when the previous scroll pass has finished.
-                # Use the measured duration from the first loop if available, else the estimate.
-                scroll_sec = self._measured_scroll_sec or self._est_scroll_sec
-                if scroll_sec <= 0 or self._last_sent_at == 0:
-                    return  # Still on first pass — nothing to loop yet
-
-                elapsed = now - self._last_sent_at
-                # 1-second gap after scroll completes before restarting
-                if elapsed < scroll_sec + 1.0:
+            if not content_changed:
+                # Same content: only re-send when FPP reports the effect has completed.
+                if not self._check_effect_done():
+                    self._effect_done_at = 0.0
                     return
+                # Effect is done — honour repeat_delay before restarting.
+                repeat_delay = float(cfg.get("repeat_delay", 0))
+                if repeat_delay > 0:
+                    if self._effect_done_at == 0.0:
+                        self._effect_done_at = time.monotonic()
+                    if time.monotonic() - self._effect_done_at < repeat_delay:
+                        return
 
-                # Don't start a pass that won't complete before the song ends
-                if seconds_remaining > 0 and seconds_remaining < scroll_sec:
-                    log.debug("Panel '%s' skipping loop — %.1fs remaining < %.1fs scroll",
-                              cfg.get("name"), seconds_remaining, scroll_sec)
-                    return
-
-                # Measure actual scroll duration from the first completed loop
-                if self._measured_scroll_sec == 0:
-                    self._measured_scroll_sec = max(1.0, elapsed - 1.0)
-                    log.info("Panel '%s' measured scroll: %.1fs per pass",
-                             cfg.get("name"), self._measured_scroll_sec)
-
-            self._est_scroll_sec = self._calc_scroll_sec(message, ov, model_widths, model_heights)
-            log.info("Panel '%s' [%s] song=%r est=%.1fs: %s",
-                     cfg.get("name"), mode, song_key or "—", self._est_scroll_sec, message)
-            host    = self.gcfg.get("fpp_host", "localhost")
-            # Always stop any running effect first so FPP creates a fresh
-            # TextMovementEffect with correct starting position on the next send.
+            host = self.gcfg.get("fpp_host", "localhost")
+            log.debug("Panel '%s' [%s] song=%r: %s", cfg.get("name"), mode, song_key or "—", message)
+            # Always stop before sending so FPP creates a fresh TextMovementEffect
+            # with the correct starting position rather than reusing stale x/y state.
             self._stop_effect()
-            payload = self._build_effect_payload(message, overrides, self._est_scroll_sec)
+            payload = self._build_effect_payload(message, overrides)
             if fpp_post_command(host, payload) is not None:
                 self.current_message = message
                 self.current_mode = mode
                 self.current_song_key = song_key
                 self._last_cmd_sig = cmd_sig
-                self._last_sent_at = now
+                self._last_sent_at = time.monotonic()
+                self._effect_done_at = 0.0
                 self._effect_active = True
             else:
                 log.error("Failed to send overlay command for panel '%s'", cfg.get("name"))
@@ -408,16 +484,11 @@ class PanelController:
             self.current_song_key = ""
             self._last_cmd_sig = ""
             self._last_sent_at = 0.0
-            self._est_scroll_sec = 0.0
-            self._measured_scroll_sec = 0.0
+            self._effect_done_at = 0.0
             self._effect_active = False
 
     def status(self) -> dict:
         with self._lock:
-            running = self._effect_active
-            raw_elapsed = (time.monotonic() - self._last_sent_at) if self._last_sent_at else 0.0
-            scroll_sec = self._measured_scroll_sec or self._est_scroll_sec
-            elapsed = min(raw_elapsed, scroll_sec) if scroll_sec > 0 else raw_elapsed
             overrides = self._get_song_overrides(self.current_song_key) if self.current_mode == "media" else {}
             active_color = overrides.get("color") or self.cfg.get("color", "#ff0000")
         return {
@@ -429,10 +500,7 @@ class PanelController:
             "mode": self.current_mode,
             "message": self.current_message,
             "song_key": self.current_song_key,
-            "running": running,
-            "scroll_sec": round(scroll_sec, 1),
-            "scroll_elapsed": round(elapsed, 1),
-            "scroll_measured": self._measured_scroll_sec > 0,
+            "running": self._effect_active,
         }
 
     def force_resend(self):
@@ -451,9 +519,13 @@ class PanelController:
             self.current_song_key = ""
             self._last_cmd_sig = ""
             self._last_sent_at = 0.0
-            self._est_scroll_sec = 0.0
-            self._measured_scroll_sec = 0.0
+            self._effect_done_at = 0.0
             self._effect_active = False
+
+    def effect_is_done(self) -> bool:
+        """Public wrapper around _check_effect_done for use in poll_once."""
+        with self._lock:
+            return self._check_effect_done()
 
 
 # ── Main daemon ───────────────────────────────────────────────────────────────
@@ -462,15 +534,13 @@ class MatrixScrollerDaemon:
 
     def __init__(self):
         self.config = load_config()
+        apply_log_level()
         self.panels: Dict[str, PanelController] = {}
         self._running = False
         self._lock = threading.Lock()
         self._no_media_since: Dict[str, Optional[float]] = {}
         self._message_overrides: Dict[str, Optional[str]] = {}
         self._current_song = ""
-        self._model_widths: Dict[str, int] = {}   # model name → pixel width from FPP
-        self._model_heights: Dict[str, int] = {}  # model name → pixel height from FPP
-        self._model_widths_at: float = 0.0
         self._media_meta: dict = {}               # format.tags for current song
         self._media_meta_key: str = ""            # song_key for which meta was fetched
         self._rebuild_panels()
@@ -500,8 +570,9 @@ class MatrixScrollerDaemon:
 
     def reload_config(self):
         self.config = load_config()
+        apply_log_level()
         self._rebuild_panels()
-        log.info("Config reloaded")
+        log.debug("Config reloaded")
 
     def set_override(self, panel_id: str, message: Optional[str]):
         """Set or clear a manual message override for a panel."""
@@ -545,29 +616,6 @@ class MatrixScrollerDaemon:
         host = self._global().get("fpp_host", "localhost")
         no_media_timeout = float(self._global().get("no_media_timeout", 5.0))
 
-        # Refresh model widths from FPP every 60 s
-        pre = time.monotonic()
-        if pre - self._model_widths_at > 60:
-            fpp_models = get_fpp_models(host)
-            self._model_widths = {}
-            self._model_heights = {}
-            for m in fpp_models:
-                if not isinstance(m, dict):
-                    continue
-                name = m.get("Name") or m.get("name", "")
-                w = int(m.get("Width") or m.get("width") or 0)
-                if not name or not w:
-                    continue
-                self._model_widths[name] = w
-                cc  = int(m.get("ChannelCount") or m.get("channelCount") or 0)
-                cpn = int(m.get("ChannelCountPerNode") or m.get("channelCountPerNode") or 3)
-                h = int(cc / cpn / w) if (cc and cpn) else int(m.get("Height") or m.get("height") or 0)
-                if h:
-                    self._model_heights[name] = h
-            self._model_widths_at = pre
-            if self._model_widths:
-                log.debug("Model widths: %s", self._model_widths)
-
         status = get_fpp_status(host)
         if status is None:
             return  # FPP unreachable, leave current state
@@ -584,8 +632,8 @@ class MatrixScrollerDaemon:
             if filename:
                 tags = get_fpp_media_meta(host, os.path.basename(unquote(filename)))
                 self._media_meta = tags
-                log.info("Fetched media meta for '%s': %s", song_key,
-                         {k: v for k, v in tags.items() if k in ("title","artist","album","genre","date")})
+                log.debug("Fetched media meta for '%s': %s", song_key,
+                          {k: v for k, v in tags.items() if k in ("title","artist","album","genre","date")})
             else:
                 self._media_meta = {}
             self._media_meta_key = song_key
@@ -594,10 +642,6 @@ class MatrixScrollerDaemon:
             self._media_meta_key = ""
 
         metadata = self._get_metadata(status, self._media_meta) if playing else {}
-        # Parse from the formatted string — seconds_remaining can be a playlist-level
-        # counter that doesn't reflect the current song's remaining time.
-        seconds_remaining = _parse_time_str(status.get("time_remaining", "")) or \
-                            float(status.get("seconds_remaining", 0))
         has_content = playing and bool(
             metadata.get("artist") or metadata.get("title") or metadata.get("fallback")
         )
@@ -616,7 +660,7 @@ class MatrixScrollerDaemon:
             # Manual override wins
             override = overrides.get(pid)
             if override is not None:
-                panel.start(override, "override", model_widths=self._model_widths, model_heights=self._model_heights)
+                panel.start(override, "override")
                 continue
 
             media_enabled    = panel.cfg.get("media",    {}).get("enabled", True)
@@ -632,7 +676,7 @@ class MatrixScrollerDaemon:
                         if so.get(field):
                             meta_for_panel[field] = _sanitize_text(so[field])
                     msg = build_message(panel.cfg, "media", meta_for_panel)
-                    panel.start(msg, "media", song_key, seconds_remaining, self._model_widths, self._model_heights)
+                    panel.start(msg, "media", song_key)
                 else:
                     panel.stop()
             else:
@@ -641,13 +685,15 @@ class MatrixScrollerDaemon:
                     self._no_media_since[pid] = now
 
                 elapsed = now - self._no_media_since[pid]
-                if elapsed >= no_media_timeout:
+                effect_done = panel.effect_is_done()
+                if elapsed >= no_media_timeout or effect_done:
+                    # Timeout expired OR current effect already finished — don't leave matrix dark
                     if no_media_enabled:
                         msg = build_message(panel.cfg, "no_media")
-                        panel.start(msg, "no_media", model_widths=self._model_widths, model_heights=self._model_heights)
+                        panel.start(msg, "no_media")
                     else:
                         panel.stop()
-                # else: still in grace period, leave media overlay running
+                # else: grace period still active and effect still running — let it finish
 
     def run(self):
         self._running = True
@@ -708,7 +754,7 @@ class MatrixScrollerDaemon:
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.config, f, indent=4)
-        log.info("Config backed up to %s", path)
+        log.debug("Config backed up to %s", path)
         return filename
 
     def get_backup_content(self, filename: str) -> Optional[dict]:
@@ -823,6 +869,12 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         elif path == "/api/plugin/matrixscroller/models":
             self._send_json(200, _daemon.get_models())
+
+        elif path == "/api/plugin/matrixscroller/fonts":
+            self._send_json(200, detect_fonts())
+
+        elif path == "/api/plugin/matrixscroller/version":
+            self._send_json(200, {"commit": GIT_COMMIT})
 
         elif path == "/api/plugin/matrixscroller/backups":
             self._send_json(200, _daemon.list_backups())

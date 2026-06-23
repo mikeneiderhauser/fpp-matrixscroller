@@ -42,10 +42,7 @@ Returns the current running state of the daemon and all configured panels.
       "mode": "media",
       "message": "Title - Artist",
       "song_key": "MySong",
-      "running": true,
-      "scroll_sec": 12.4,
-      "scroll_elapsed": 3.1,
-      "scroll_measured": true
+      "running": true
     }
   ]
 }
@@ -72,6 +69,7 @@ Returns the full active configuration.
 ```json
 {
   "global": {
+    "schema_version": 1,
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
@@ -88,6 +86,7 @@ Returns the full active configuration.
       "fontsize": 10,
       "position": "R2L",
       "pixelspersecond": 15,
+      "repeat_delay": 0,
       "media": {
         "enabled": true,
         "pre_roll":  { "enabled": false, "text": "" },
@@ -123,6 +122,12 @@ Returns the full active configuration.
 }
 ```
 
+**Panel fields**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `repeat_delay` | float | Seconds to pause after a scroll completes before restarting. Default `0`. |
+
 ---
 
 ### `POST /config`
@@ -151,6 +156,21 @@ Reload configuration from disk without restarting the daemon. Useful after editi
 
 ---
 
+## Version
+
+### `GET /version`
+
+Returns the git commit hash of the currently deployed plugin code.
+
+**Response**
+```json
+{ "commit": "b718ed1" }
+```
+
+Useful for confirming which version is running after an update.
+
+---
+
 ## Output Toggle
 
 ### `POST /output`
@@ -167,7 +187,7 @@ Enable or disable all overlay output without a full config round-trip. Equivalen
 { "status": "ok", "enable_output": true }
 ```
 
-> When disabled, all panel subprocesses are stopped and the matrix is cleared. Config is preserved — re-enabling resumes immediately on the next poll.
+> When disabled, all panel effects are stopped and the matrix is cleared. Config is preserved — re-enabling resumes immediately on the next poll.
 
 ---
 
@@ -247,7 +267,7 @@ Returns the list of pixel overlay models available in FPP.
 
 ### `GET /fonts`
 
-Returns the list of fonts available in fpp-matrixtools.
+Returns the list of fonts detected on disk in the directories FPP scans. Only fonts with actual files present are included.
 
 **Response**
 ```json

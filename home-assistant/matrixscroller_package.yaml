@@ -1,0 +1,204 @@
+# ── fpp-matrixscroller HA Package ────────────────────────────────────────────
+# Place this file in your HA config/packages/ directory.
+#
+# In configuration.yaml add (once, if not already present):
+#   homeassistant:
+#     packages: !include_dir_named packages
+#
+# SETUP: copy matrixscroller_secrets.yaml entries into your secrets.yaml first.
+#        All FPP URLs are referenced via !secret — change IP in one place.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── REST sensors ──────────────────────────────────────────────────────────────
+rest:
+  # Poll /status every 5 s: daemon state, current song, per-panel state
+  - resource: !secret matrixscroller_api_status
+    scan_interval: 5
+    sensor:
+      - name: "MatrixScroller Status"
+        unique_id: matrixscroller_status
+        value_template: "{{ 'online' if value_json.running else 'offline' }}"
+        json_attributes:
+          - running
+          - current_song
+          - media_meta
+          - panels
+
+  # Poll /config every 30 s: global settings including enable_output flag
+  - resource: !secret matrixscroller_api_config
+    scan_interval: 30
+    sensor:
+      - name: "MatrixScroller Config"
+        unique_id: matrixscroller_config
+        value_template: >
+          {{ 'enabled' if value_json['global']['enable_output'] else 'disabled' }}
+        json_attributes:
+          - global
+
+
+# ── REST commands ─────────────────────────────────────────────────────────────
+rest_command:
+  # Enable all panel output
+  matrixscroller_output_on:
+    url: !secret matrixscroller_api_output
+    method: POST
+    content_type: application/json
+    payload: '{"enable": true}'
+
+  # Disable all panel output (clears matrix, preserves config)
+  matrixscroller_output_off:
+    url: !secret matrixscroller_api_output
+    method: POST
+    content_type: application/json
+    payload: '{"enable": false}'
+
+  # Send a manual message override to every panel
+  # Usage: service: rest_command.matrixscroller_message_all
+  #        data: { message: "Welcome to the show!" }
+  matrixscroller_message_all:
+    url: !secret matrixscroller_api_message_all
+    method: POST
+    content_type: application/json
+    payload: '{"message": "{{ message }}"}'
+
+  # Clear the manual override on every panel (returns to media/no-media mode)
+  matrixscroller_clear_override:
+    url: !secret matrixscroller_api_message_all
+    method: POST
+    content_type: application/json
+    payload: '{"message": null}'
+
+  # Send a manual message override to a single panel by panel_id
+  matrixscroller_message_panel:
+    url: !secret matrixscroller_api_message
+    method: POST
+    content_type: application/json
+    payload: '{"panel_id": "{{ panel_id }}", "message": "{{ message }}"}'
+
+  # Clear the override on a single panel by panel_id
+  matrixscroller_clear_panel:
+    url: !secret matrixscroller_api_message
+    method: POST
+    content_type: application/json
+    payload: '{"panel_id": "{{ panel_id }}", "message": null}'
+
+
+# ── Template entities ─────────────────────────────────────────────────────────
+template:
+  # Switch: reads enable_output from config sensor; writes via rest_command
+  - switch:
+      - name: "MatrixScroller Output"
+        unique_id: matrixscroller_output
+        icon: mdi:led-strip-variant
+        state: >
+          {% set g = state_attr('sensor.matrixscroller_config', 'global') %}
+          {{ g is not none and g.enable_output | default(false) }}
+        turn_on:
+          - service: rest_command.matrixscroller_output_on
+        turn_off:
+          - service: rest_command.matrixscroller_output_off
+
+  # Binary sensor: is the daemon process itself running?
+  - binary_sensor:
+      - name: "MatrixScroller Daemon"
+        unique_id: matrixscroller_daemon
+        device_class: running
+        state: >
+          {{ state_attr('sensor.matrixscroller_status', 'running') | default(false) }}
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+input_text:
+  matrixscroller_override:
+    name: "Matrix Override Message"
+    max: 255
+    icon: mdi:message-text
+  matrixscroller_panel_override:
+    name: "Panel Override Message"
+    max: 255
+    icon: mdi:message-text
+
+input_select:
+  matrixscroller_panel_select:
+    name: "Panel Select"
+    options:
+      - "(no panels)"
+    icon: mdi:led-strip-variant
+
+
+# ── Scripts ───────────────────────────────────────────────────────────────────
+script:
+  matrixscroller_send_override:
+    alias: "MatrixScroller: Send Override Message"
+    icon: mdi:message-arrow-right
+    sequence:
+      - service: rest_command.matrixscroller_message_all
+        data:
+          message: "{{ states('input_text.matrixscroller_override') }}"
+
+  matrixscroller_clear_override:
+    alias: "MatrixScroller: Clear Override"
+    icon: mdi:message-off
+    sequence:
+      - service: rest_command.matrixscroller_clear_override
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.matrixscroller_override
+        data:
+          value: ""
+
+  matrixscroller_send_panel_override:
+    alias: "MatrixScroller: Send Panel Override"
+    icon: mdi:message-arrow-right
+    sequence:
+      - variables:
+          selected_name: "{{ states('input_select.matrixscroller_panel_select') }}"
+          panels: "{{ state_attr('sensor.matrixscroller_status', 'panels') | default([]) }}"
+          panel_id: >
+            {{ (panels | selectattr('name', 'equalto', selected_name) | first | default({})).get('id', '') }}
+      - condition: template
+        value_template: "{{ panel_id != '' }}"
+      - service: rest_command.matrixscroller_message_panel
+        data:
+          panel_id: "{{ panel_id }}"
+          message: "{{ states('input_text.matrixscroller_panel_override') }}"
+
+  matrixscroller_clear_panel_override:
+    alias: "MatrixScroller: Clear Panel Override"
+    icon: mdi:message-off
+    sequence:
+      - variables:
+          selected_name: "{{ states('input_select.matrixscroller_panel_select') }}"
+          panels: "{{ state_attr('sensor.matrixscroller_status', 'panels') | default([]) }}"
+          panel_id: >
+            {{ (panels | selectattr('name', 'equalto', selected_name) | first | default({})).get('id', '') }}
+      - condition: template
+        value_template: "{{ panel_id != '' }}"
+      - service: rest_command.matrixscroller_clear_panel
+        data:
+          panel_id: "{{ panel_id }}"
+      - service: input_text.set_value
+        target:
+          entity_id: input_text.matrixscroller_panel_override
+        data:
+          value: ""
+
+
+# ── Automations ───────────────────────────────────────────────────────────────
+automation:
+  - alias: "MatrixScroller: Update Panel Select Options"
+    trigger:
+      - platform: homeassistant
+        event: start
+      - platform: state
+        entity_id: sensor.matrixscroller_status
+    condition:
+      - condition: template
+        value_template: "{{ state_attr('sensor.matrixscroller_status', 'panels') is not none }}"
+    action:
+      - service: input_select.set_options
+        target:
+          entity_id: input_select.matrixscroller_panel_select
+        data:
+          options: "{{ state_attr('sensor.matrixscroller_status', 'panels') | map(attribute='name') | list }}"

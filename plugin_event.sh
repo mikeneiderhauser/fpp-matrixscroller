@@ -18,7 +18,8 @@ start_daemon() {
         fi
         rm -f "$PIDFILE"
     fi
-    echo "Starting matrixscroller daemon..."
+    COMMIT=$(git -C "$PLUGIN_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    echo "Starting matrixscroller daemon @ $COMMIT..."
     python3 "$DAEMON" >> "$LOGFILE" 2>&1 &
     echo $! > "$PIDFILE"
     echo "matrixscroller started (PID $!)"

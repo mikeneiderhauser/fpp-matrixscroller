@@ -20,6 +20,7 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'POST', 'endpoint' => 'message/all', 'callback' => 'fppmatrixscrollerMessageAll'),
         array('method' => 'POST', 'endpoint' => 'output',      'callback' => 'fppmatrixscrollerOutput'),
         array('method' => 'POST', 'endpoint' => 'reload',      'callback' => 'fppmatrixscrollerReload'),
+        array('method' => 'GET',  'endpoint' => 'version',        'callback' => 'fppmatrixscrollerVersion'),
         array('method' => 'GET',  'endpoint' => 'fonts',          'callback' => 'fppmatrixscrollerFonts'),
         array('method' => 'GET',  'endpoint' => 'music',          'callback' => 'fppmatrixscrollerMusic'),
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
@@ -68,11 +69,10 @@ function fppmatrixscrollerDaemonRequest($path, $method = 'GET') {
     return json($data);
 }
 
+function fppmatrixscrollerVersion() { return fppmatrixscrollerDaemonRequest('version'); }
+
 function fppmatrixscrollerFonts() {
-    $resp = @file_get_contents('http://localhost/api/overlays/fonts');
-    if ($resp === false) return json(array());
-    $data = json_decode($resp, true);
-    return json(is_array($data) ? $data : array());
+    return fppmatrixscrollerDaemonRequest('fonts');
 }
 
 function fppmatrixscrollerMusic() {
