@@ -17,7 +17,7 @@
 		{
 			"minFPPVersion": "9.0",
 			"maxFPPVersion": "9.99",
-			"branch": "bugfix",
+			"branch": "master",
 			"sha": ""
 		}
 	]
