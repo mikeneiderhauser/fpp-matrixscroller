@@ -330,7 +330,7 @@ async function loadFonts() {
     const data = await apiFetch('/fonts');
     fonts = Array.isArray(data) ? data : [];
   } catch(e) {
-    fonts = ['DejaVuSans','FreeSans','NimbusSans-Regular'];
+    fonts = ['NimbusSans-Regular'];
   }
 }
 
@@ -629,7 +629,7 @@ function collectPanel(idx) {
     enabled:        get(`p${idx}_enabled`).checked,
     model:          get(`p${idx}_model`)?.value        || '',
     color:          get(`p${idx}_color`).value.trim()  || '#ff0000',
-    font:           get(`p${idx}_font`)?.value         || 'DejaVuSans',
+    font:           get(`p${idx}_font`)?.value         || 'NimbusSans-Regular',
     fontsize:       parseInt(get(`p${idx}_fontsize`).value)      || 10,
     position:       get(`p${idx}_position`)?.value               || 'R2L',
     pixelspersecond:parseInt(get(`p${idx}_pps`).value)           || 15,
@@ -668,7 +668,7 @@ function addPanel() {
   config.panels = collectAllPanels();
   config.panels.push({
     id:`panel_${newIdx+1}`, name:`Panel ${newIdx+1}`, enabled:true, model:'',
-    color:'#ff0000', font:'DejaVuSans', fontsize:10, position:'R2L', pixelspersecond:15, repeat_delay:0,
+    color:'#ff0000', font:'NimbusSans-Regular', fontsize:10, position:'R2L', pixelspersecond:15, repeat_delay:0,
     media:{enabled:true,pre_roll:{enabled:false,text:''},tune_to:{enabled:false,text:'Tune To:'},
            artist:{enabled:true},title:{enabled:true},album:{enabled:false},
            post_roll:{enabled:false,text:''},gap:{enabled:true,text:' | '}},

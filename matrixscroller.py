@@ -181,14 +181,13 @@ def fpp_put(host: str, path: str, payload: dict) -> bool:
 
 # ── Font detection ────────────────────────────────────────────────────────────
 
-# Mirrors the directories FPP's PixelOverlayManager::loadFonts() scans.
+# Only .pfb Type1 fonts work with FPP 10's compiled fppd / GraphicsMagick.
+# TrueType (.ttf) files exist on disk but mapFont() silently fails to resolve them.
 _FONT_DIRS = [
-    "/usr/share/fonts/truetype/",
     "/usr/share/fonts/X11/Type1/",
     "/usr/local/share/fonts/",
-    "/System/Library/fonts/",  # macOS / dev environments
 ]
-_FONT_EXTENSIONS = {".ttf", ".pfb"}
+_FONT_EXTENSIONS = {".pfb"}
 
 _detected_fonts: Optional[List[str]] = None
 _detected_fonts_lock = threading.Lock()
@@ -344,7 +343,7 @@ class PanelController:
         return {
             "Message":        message,
             "Position":       ov.get("position")            or cfg.get("position",        "R2L"),
-            "Font":           ov.get("font")                or cfg.get("font",            "DejaVuSans"),
+            "Font":           ov.get("font")                or cfg.get("font",            "NimbusSans-Regular"),
             "FontSize":       int(ov.get("fontsize")        or cfg.get("fontsize",        10)),
             "AntiAlias":      False,
             "PixelsPerSecond": int(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
@@ -417,7 +416,7 @@ class PanelController:
             ov  = overrides or {}
             cmd_sig = "|".join(str(x) for x in [
                 ov.get("color")           or cfg.get("color",           "#ff0000"),
-                ov.get("font")            or cfg.get("font",            "DejaVuSans"),
+                ov.get("font")            or cfg.get("font",            "NimbusSans-Regular"),
                 ov.get("fontsize")        or cfg.get("fontsize",        10),
                 ov.get("position")        or cfg.get("position",        "R2L"),
                 ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15),
