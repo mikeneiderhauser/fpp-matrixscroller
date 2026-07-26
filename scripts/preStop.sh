@@ -8,10 +8,7 @@ if [ -f "$PIDFILE" ]; then
     if kill -0 "$PID" 2>/dev/null; then
         echo "Stopping matrixscroller (PID $PID)..."
         kill "$PID"
-        for i in $(seq 1 20); do
-            kill -0 "$PID" 2>/dev/null || break
-            sleep 0.1
-        done
+        timeout 2 tail --pid="$PID" -f /dev/null 2>/dev/null || true
         kill -0 "$PID" 2>/dev/null && kill -9 "$PID" || true
     fi
     rm -f "$PIDFILE"
