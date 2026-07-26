@@ -338,29 +338,18 @@ class PanelController:
         return {}
 
     def _build_effect_payload(self, message: str, overrides: dict = None) -> dict:
-        """Build the FPP 'Overlay Model Effect' command payload."""
+        """Build the REST payload for PUT /api/overlays/model/{name}/text."""
         cfg = self.cfg
         ov  = overrides or {}
         return {
-            "command": "Overlay Model Effect",
-            "args": [
-                cfg.get("model", ""),
-                "true",   # autoenable
-                "Text",
-                ov.get("color")               or cfg.get("color",           "#ff0000"),
-                ov.get("font")                or cfg.get("font",            "DejaVuSans"),
-                str(ov.get("fontsize")        or cfg.get("fontsize",        10)),
-                "false",  # anti-alias
-                ov.get("position")            or cfg.get("position",        "R2L"),
-                str(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
-                "0",      # duration: unused for scrolling effects in FPP
-                # Only inject TextMode arg when non-default so this plugin remains
-                # usable on unpatched FPP (which expects Text at args[7], not args[8]).
-                # A patched FPP binary is required to use 90CW, 270CW, or Vert.
-                *([ov.get("text_mode") or cfg.get("text_mode", "H"), message]
-                  if (ov.get("text_mode") or cfg.get("text_mode", "H")) != "H"
-                  else [message]),
-            ]
+            "Message":        message,
+            "Position":       ov.get("position")            or cfg.get("position",        "R2L"),
+            "Font":           ov.get("font")                or cfg.get("font",            "DejaVuSans"),
+            "FontSize":       int(ov.get("fontsize")        or cfg.get("fontsize",        10)),
+            "AntiAlias":      False,
+            "PixelsPerSecond": int(ov.get("pixelspersecond") or cfg.get("pixelspersecond", 15)),
+            "Color":          ov.get("color")               or cfg.get("color",           "#ff0000"),
+            "AutoEnable":     True,
         }
 
     def _check_effect_done(self) -> bool:
@@ -388,13 +377,8 @@ class PanelController:
         model = self.cfg.get("model", "")
         if not model:
             return
-        # Stop the running effect so FPP destroys the TextMovementEffect object.
-        # Without this, FPP reuses the effect and carries over stale x/y position
-        # on the next send, causing text to start mid-scroll instead of from the edge.
-        fpp_post_command(host, {
-            "command": "Overlay Model Effect",
-            "args": [model, "false", "Stop Effects"],
-        })
+        # Disable the model so FPP resets the TextMovementEffect state. Without
+        # this, re-sending text reuses stale x/y position and starts mid-scroll.
         fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
     def start(self, message: str, mode: str, song_key: str = ""):
@@ -465,7 +449,8 @@ class PanelController:
             # with the correct starting position rather than reusing stale x/y state.
             self._stop_effect()
             payload = self._build_effect_payload(message, overrides)
-            if fpp_post_command(host, payload) is not None:
+            model_enc = quote(self.cfg.get("model", ""), safe="")
+            if fpp_put(host, f"/api/overlays/model/{model_enc}/text", payload):
                 self.current_message = message
                 self.current_mode = mode
                 self.current_song_key = song_key
