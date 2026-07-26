@@ -2,21 +2,22 @@
 	"name": "Matrix Scroller",
 	"repoName": "fpp-matrixscroller",
 	"author": "Mike Neiderhauser",
-	"description": "Scrolls song metadata and custom text across LED matrix panels using FPP's Overlay Model API. Per-panel config, per-song overrides, repeat delay, and a web UI. Includes a Home Assistant dashboard for remote control.",
+	"description": "Scrolls song information and custom text across LED matrix panels using FPP's Overlay Model API. Per-panel config, per-song overrides, repeat delay, and a web UI. Includes a Home Assistant dashboard for remote control.",
 	"homeURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller",
 	"srcURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller.git",
 	"bugURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller/issues",
-    
+	"iconURL": "https://raw.githubusercontent.com/mikeneiderhauser/fpp-matrixscroller/master/icon.png",
+
 	"versions": [
 		{
-			"minFPPVersion": "8.0",
-			"maxFPPVersion": "8.99",
+			"minFPPVersion": "9.0",
+			"maxFPPVersion": "9.99",
 			"branch": "master",
 			"sha": ""
 		},
 		{
-			"minFPPVersion": "9.0",
-			"maxFPPVersion": "9.99",
+			"minFPPVersion": "10.0",
+			"maxFPPVersion": "0",
 			"branch": "master",
 			"sha": ""
 		}

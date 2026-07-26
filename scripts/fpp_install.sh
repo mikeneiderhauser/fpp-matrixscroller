@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 # fpp-matrixscroller install script
 
@@ -25,7 +26,7 @@ if [ -f "$PIDFILE" ]; then
         echo "Stopping fpp-matrixscroller daemon (PID $PID) for update..."
         kill "$PID"
         sleep 1
-        kill -0 "$PID" 2>/dev/null && kill -9 "$PID"
+        kill -0 "$PID" 2>/dev/null && kill -9 "$PID" || true
     fi
     rm -f "$PIDFILE"
 fi

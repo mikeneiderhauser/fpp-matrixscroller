@@ -10,6 +10,7 @@ PIDFILE="/var/run/fppd/matrixscroller.pid"
 LOGFILE="/home/fpp/media/logs/fpp-matrixscroller.log"
 
 start_daemon() {
+    mkdir -p "$(dirname "$PIDFILE")"
     if [ -f "$PIDFILE" ]; then
         PID=$(cat "$PIDFILE")
         if kill -0 "$PID" 2>/dev/null && grep -q "matrixscroller" /proc/$PID/cmdline 2>/dev/null; then
