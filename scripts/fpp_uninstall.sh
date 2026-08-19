@@ -15,4 +15,9 @@ if [ -f "$PIDFILE" ]; then
     rm -f "$PIDFILE"
 fi
 
+# Remove playlist scripts
+for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh; do
+    rm -f "/home/fpp/media/scripts/$script"
+done
+
 echo "fpp-matrixscroller uninstall complete"
