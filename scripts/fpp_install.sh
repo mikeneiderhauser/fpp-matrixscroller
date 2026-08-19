@@ -15,7 +15,7 @@ mkdir -p /home/fpp/media/scripts
 mkdir -p /var/run/fppd
 
 # Deploy FPP playlist scripts
-for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh; do
+for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh ms_override_all.sh ms_reload_config.sh; do
     cp "$PLUGIN_DIR/scripts/$script" /home/fpp/media/scripts/
     chmod +x "/home/fpp/media/scripts/$script"
 done

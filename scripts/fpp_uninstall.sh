@@ -16,7 +16,7 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 # Remove playlist scripts
-for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh; do
+for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh ms_override_all.sh ms_reload_config.sh; do
     rm -f "/home/fpp/media/scripts/$script"
 done
 

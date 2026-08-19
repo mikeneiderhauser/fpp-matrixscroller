@@ -1,0 +1,45 @@
+{
+  "name": "FPP 9.x",
+  "slug": "fpp9",
+  "categories": [13, 16],
+  "date_created": "2026-06-22",
+  "type": "ct",
+  "updateable": true,
+  "privileged": true,
+  "interface_port": 80,
+  "documentation": "https://github.com/FalconChristmas/fpp/blob/master/docs/README.md",
+  "website": "https://falconchristmas.com",
+  "logo": "https://raw.githubusercontent.com/FalconChristmas/fpp/master/www/images/fpp-logo.png",
+  "description": "Falcon Player (FPP) is a lightweight, optimized software designed to run on single-board computers and x86 systems for controlling pixel lighting sequences. FPP 9.x is the current stable release.",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "ct/fpp9.sh",
+      "resources": {
+        "cpu": 2,
+        "ram": 2048,
+        "hdd": 10,
+        "os": "Debian",
+        "version": "12"
+      }
+    }
+  ],
+  "default_credentials": {
+    "username": "fpp",
+    "password": "falcon"
+  },
+  "notes": [
+    {
+      "text": "FPP requires a privileged container for hardware and systemd access.",
+      "type": "warning"
+    },
+    {
+      "text": "Installation compiles FPP from source and takes 15–30 minutes depending on CPU speed.",
+      "type": "info"
+    },
+    {
+      "text": "FPP is officially supported only on Raspberry Pi and BeagleBone. x86/LXC installs are community-supported.",
+      "type": "info"
+    }
+  ]
+}

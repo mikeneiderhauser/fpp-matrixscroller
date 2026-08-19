@@ -13,21 +13,35 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 - **Immediate media transitions** — stops the current effect and restarts immediately when the song changes; switches to no-media as soon as the current effect finishes rather than leaving the matrix dark
 - **Enable Output toggle** — suppress all overlay effects without stopping the daemon
 - **Daemon controls** — Start, Stop, and Restart the daemon from the web UI
-- **Config backup & restore** — create timestamped backups, download/upload config as JSON, restore from any saved backup
+- **Config Snapshots** — save named snapshots (pre-filled with a timestamp), download/upload config as JSON, restore from any saved snapshot
 - **REST API** — get/set config, status, manual message overrides, version info (useful for Home Assistant automations)
 - **Autostart** — starts automatically on install and on every FPP daemon start via `plugin_event.sh`
-- **Web UI** — configure all panels from the FPP plugin page; dark/light mode toggle; git commit shown in page footer
+- **Web UI** — configure all panels from the FPP plugin page; honors FPP's dark/light mode setting; git commit shown in page footer
 - **Log level integration** — respects FPP's **Settings → Logs → Plugin** log level; set to `Debug` for verbose output, `Info` for quiet operation
 
 ## Requirements
 
-- FPP 8.0+
+- FPP 8.0+ (primarily tested on FPP 10)
 - Python 3.7+
 - One or more Pixel Overlay models configured in FPP
 
 ## Installation
 
-Install via the FPP plugin manager, or manually:
+### Option 1 — FPP Plugin Manager (once listed)
+
+1. In the FPP web UI go to **Content Setup → Plugin Manager**
+2. Find **fpp-matrixscroller** in the available plugins list and click **Install**
+
+### Option 2 — FPP Plugin Manager (manual URL)
+
+1. In the FPP web UI go to **Content Setup → Plugin Manager**
+2. Click **Add Plugin from URL** and enter:
+   ```
+   https://raw.githubusercontent.com/mikeneiderhauser/fpp-matrixscroller/master/pluginInfo.json
+   ```
+3. Click **Install**
+
+### Option 3 — Manual clone
 
 ```bash
 cd /home/fpp/media/plugins
@@ -35,7 +49,9 @@ git clone https://github.com/mikeneiderhauser/fpp-matrixscroller
 bash /home/fpp/media/plugins/fpp-matrixscroller/scripts/fpp_install.sh
 ```
 
-`fpp_install.sh` makes scripts executable, creates the log and config directories, and starts the daemon immediately. On subsequent boots, FPP calls `plugin_event.sh fppd_start` automatically.
+---
+
+In all cases, `fpp_install.sh` deploys the playlist scripts, creates the log and config directories, and starts the daemon. On subsequent boots FPP calls `plugin_event.sh fppd_start` to restart it automatically.
 
 Config is stored at:
 ```
@@ -52,7 +68,7 @@ Open the plugin page in FPP's web interface. The UI includes:
 - **Panels** — full per-panel config including display settings, message fields, and per-song overrides
 - **Global Settings** — FPP host, poll interval, media idle timeout, Enable Output toggle
 - **Daemon Control** — Start / Restart / Stop with live Online/Offline badge
-- **Backup & Restore** — create a timestamped server-side backup, download the current config as JSON, upload a JSON file to restore, or select a previous backup from the dropdown and restore it
+- **Config Snapshots** — save a named snapshot (timestamp pre-filled), download the current config as JSON, upload a JSON file to restore, or select a previous snapshot and restore it
 
 The current git commit hash is shown in the page footer for version identification.
 
@@ -79,9 +95,9 @@ http://<fpp-ip>/api/plugin/fpp-matrixscroller/<endpoint>
 | GET | `daemon/start` | Start the daemon (if not running) |
 | POST | `daemon/restart` | Restart the daemon |
 | POST | `daemon/stop` | Stop the daemon |
-| GET | `backups` | List available config backup files |
-| POST | `backup` | Create a new timestamped config backup |
-| POST | `restore` | Restore config from a backup file (JSON body: `{"filename": "..."}`) |
+| GET | `backups` | List available config snapshots |
+| POST | `backup` | Save a named config snapshot (JSON body: `{"name": "my-snapshot"}`) |
+| POST | `restore` | Restore config from a snapshot (JSON body: `{"filename": "..."}`) |
 
 ### Manual Message Override
 
@@ -105,20 +121,31 @@ POST /api/plugin/fpp-matrixscroller/message
 }
 ```
 
-### Backup & Restore
+### Config Snapshots
 
-Backups are saved to `/home/fpp/media/config/` alongside the active config, named:
+Snapshots are saved to `/home/fpp/media/config/` alongside the active config, named:
 
 ```
-plugin.fpp-matrixscroller.backup.YYYYMMDD-HHMMSS.json
+plugin.fpp-matrixscroller.backup.<name>.json
 ```
 
-Restore from a specific backup via API:
+Where `<name>` is the user-provided name (the UI pre-fills it with a timestamp like `20260101-120000`).
+
+Save a snapshot via API:
+
+```json
+POST /api/plugin/fpp-matrixscroller/backup
+{
+  "name": "pre-show"
+}
+```
+
+Restore from a snapshot via API:
 
 ```json
 POST /api/plugin/fpp-matrixscroller/restore
 {
-  "filename": "plugin.fpp-matrixscroller.backup.20260101-120000.json"
+  "filename": "plugin.fpp-matrixscroller.backup.pre-show.json"
 }
 ```
 
@@ -152,7 +179,7 @@ When no media has been playing for longer than `no_media_timeout` seconds (or th
       "enabled": true,
       "model": "Matrix1",
       "color": "#ff0000",
-      "font": "DejaVuSans",
+      "font": "C059-Bold",
       "fontsize": 10,
       "position": "R2L",
       "pixelspersecond": 15,
@@ -178,7 +205,7 @@ When no media has been playing for longer than `no_media_timeout` seconds (or th
         "MySong": {
           "enabled": true,
           "color": "#00ff00",
-          "font": "DejaVuSans",
+          "font": "C059-Bold",
           "fontsize": 12,
           "position": "L2R",
           "pixelspersecond": 20,
@@ -190,6 +217,78 @@ When no media has been playing for longer than `no_media_timeout` seconds (or th
     }
   ]
 }
+```
+
+## Playlist Automation
+
+Three shell scripts are installed to `/home/fpp/media/scripts/` and appear in the FPP playlist editor under **Run Script**. Use them to automate the plugin as your show changes phases.
+
+### ms_enable_output.sh
+
+Enable or disable all overlay output.
+
+| Argument | Value |
+|----------|-------|
+| args | `1` to enable, `0` to disable |
+
+**Playlist example:** Run Script → `ms_enable_output.sh` → args: `1`
+
+### ms_restore_snapshot.sh
+
+Restore a named config snapshot. The name is what you typed when saving the snapshot in the UI (without the `plugin.fpp-matrixscroller.backup.` prefix or `.json` suffix).
+
+| Argument | Value |
+|----------|-------|
+| args | snapshot name, e.g. `pre-show` |
+
+**Playlist example:** Run Script → `ms_restore_snapshot.sh` → args: `pre-show`
+
+### ms_override_all.sh
+
+Set or clear a manual message override on **all** panels simultaneously.
+
+| Argument | Value |
+|----------|-------|
+| args | `[message]` — omit to clear all overrides |
+
+**Playlist examples:**
+
+```
+# Set override on all panels
+ms_override_all.sh Show starts in 5 minutes!
+
+# Clear all overrides (returns all panels to normal mode)
+ms_override_all.sh
+```
+
+### ms_reload_config.sh
+
+Reload the config from disk without restarting the daemon. Useful if you have edited the config JSON on disk directly. Not needed after a snapshot restore — restores apply live automatically.
+
+| Argument | Value |
+|----------|-------|
+| args | (none) |
+
+**Playlist example:** Run Script → `ms_reload_config.sh`
+
+---
+
+### ms_override_panel.sh
+
+Set or clear a manual message override on a specific panel, bypassing the normal media/no-media logic. Panel IDs are shown in the plugin UI (e.g. `panel_1`, `panel_2`).
+
+| Argument | Value |
+|----------|-------|
+| args | `<panel_id> [message]` — omit message to clear the override |
+
+**Playlist examples:**
+
+```
+# Set override on panel_1
+ms_override_panel.sh panel_1 Show starts in 5 minutes!
+
+# Clear override on panel_1 (returns to normal media/no-media mode)
+ms_override_panel.sh panel_1
 ```
 
 ## Home Assistant Integration
