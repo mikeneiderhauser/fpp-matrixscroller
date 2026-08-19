@@ -9,6 +9,7 @@ Exposes a REST API on port 32329 for config and status.
 import json
 import logging
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -731,9 +732,9 @@ class MatrixScrollerDaemon:
         except Exception:
             return []
 
-    def create_backup(self) -> str:
-        ts = time.strftime("%Y%m%d-%H%M%S")
-        filename = f"plugin.fpp-matrixscroller.backup.{ts}.json"
+    def create_backup(self, name: str) -> str:
+        safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:64]
+        filename = f"plugin.fpp-matrixscroller.backup.{safe}.json"
         path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
         os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
         with open(path, "w") as f:
@@ -909,7 +910,12 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "reloaded"})
 
         elif path == "/api/plugin/matrixscroller/backup":
-            filename = _daemon.create_backup()
+            body = self._read_json() or {}
+            name = body.get("name", "").strip()
+            if not name:
+                self._send_json(400, {"error": "name field required"})
+                return
+            filename = _daemon.create_backup(name)
             self._send_json(200, {"status": "ok", "filename": filename})
 
         elif path == "/api/plugin/matrixscroller/restore":
@@ -974,7 +980,7 @@ class ApiHandler(BaseHTTPRequestHandler):
 
 
 def run_api_server():
-    server = HTTPServer(("0.0.0.0", API_PORT), ApiHandler)
+    server = HTTPServer(("127.0.0.1", API_PORT), ApiHandler)
     log.info("REST API listening on port %d", API_PORT)
     server.serve_forever()
 

@@ -14,7 +14,6 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
   <div class="card mb-3">
     <div class="card-body py-2 d-flex align-items-center gap-3 flex-wrap" id="ms-fpp-bar">
       <span id="ms-fpp-status" class="d-flex align-items-center gap-3 flex-wrap flex-grow-1"><span class="badge bg-secondary">Loading…</span></span>
-      <button class="btn btn-sm btn-outline-secondary ms-auto" id="ms-dark-btn" onclick="toggleDark()" title="Toggle dark mode">&#9790;</button>
     </div>
     <div id="ms-meta-detail" class="d-none px-3 pb-2" style="border-top:1px solid var(--bs-border-color);"></div>
   </div>
@@ -98,15 +97,15 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
     <button class="btn btn-outline-secondary" onclick="loadConfig()">&#8635; Reload from Daemon</button>
   </div>
 
-  <!-- Backup Manager -->
+  <!-- Templates -->
   <div class="card mb-3">
     <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-      <strong>Backup Manager</strong>
+      <strong>Config Snapshots</strong>
       <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-sm btn-outline-secondary" onclick="backupConfig()">&#128190; Create Backup</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="backupConfig()">&#128190; Save Snapshot</button>
         <button class="btn btn-sm btn-outline-secondary" onclick="downloadConfig()">&#8659; Download Current</button>
         <label class="btn btn-sm btn-outline-secondary mb-0">&#8657; Upload &amp; Apply<input type="file" accept=".json" class="d-none" onchange="uploadConfig(this)"></label>
-        <button class="btn btn-sm btn-outline-danger" onclick="deleteAllBackups()">&#128465; Delete All</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteAllBackups()">&#128465; Delete All Snapshots</button>
       </div>
     </div>
     <div class="card-body p-0">
@@ -856,18 +855,18 @@ function collectSongOverrides(panelIdx) {
   return result;
 }
 
-// ── Backup Manager ────────────────────────────────────────────────────────────
+// ── Config Snapshots ──────────────────────────────────────────────────────────
 async function loadBackups() {
   const container = document.getElementById('ms-backup-table');
   if (!container) return;
   try {
     const files = await apiFetch('/backups');
     if (!Array.isArray(files) || files.length === 0) {
-      container.innerHTML = '<p class="text-muted small p-3 mb-0">No backups found.</p>';
+      container.innerHTML = '<p class="text-muted small p-3 mb-0">No snapshots found.</p>';
       return;
     }
     container.innerHTML = `<div class="table-responsive"><table class="table table-sm table-hover mb-0">
-      <thead><tr><th>Filename</th><th class="text-end">Actions</th></tr></thead>
+      <thead><tr><th>Snapshot</th><th class="text-end">Actions</th></tr></thead>
       <tbody>${files.map(f => `<tr>
         <td class="small align-middle">${escHtml(f)}</td>
         <td class="text-end align-middle" style="white-space:nowrap;">
@@ -878,16 +877,22 @@ async function loadBackups() {
       </tr>`).join('')}</tbody>
     </table></div>`;
   } catch(e) {
-    container.innerHTML = '<p class="text-muted small p-3 mb-0">Daemon offline — backups unavailable.</p>';
+    container.innerHTML = '<p class="text-muted small p-3 mb-0">Daemon offline — snapshots unavailable.</p>';
   }
 }
 
 async function backupConfig() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const def = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const name = prompt('Snapshot name:', def);
+  if (name === null) return;
+  if (!name.trim()) { showToast('Name cannot be empty', true); return; }
   try {
-    const r = await apiFetch('/backup', 'POST');
-    showToast('Backup saved: ' + r.filename);
+    const r = await apiFetch('/backup', 'POST', { name: name.trim() });
+    showToast('Snapshot saved: ' + r.filename);
     await loadBackups();
-  } catch(e) { showToast('Backup failed', true); }
+  } catch(e) { showToast('Snapshot failed', true); }
 }
 
 async function downloadBackup(filename) {
@@ -920,10 +925,10 @@ async function deleteBackup(filename) {
 }
 
 async function deleteAllBackups() {
-  if (!confirm('Delete ALL backups? This cannot be undone.')) return;
+  if (!confirm('Delete ALL snapshots? This cannot be undone.')) return;
   try {
     const r = await apiFetch('/backup/delete-all', 'POST');
-    showToast('Deleted ' + r.deleted + ' backup(s)');
+    showToast('Deleted ' + r.deleted + ' snapshot(s)');
     await loadBackups();
   } catch(e) { showToast('Delete all failed', true); }
 }
@@ -955,23 +960,6 @@ function uploadConfig(input) {
   reader.readAsText(file);
 }
 
-// ── Dark mode ─────────────────────────────────────────────────────────────────
-function toggleDark() {
-  const root = document.getElementById('ms-root');
-  const isDark = root.getAttribute('data-bs-theme') === 'dark';
-  const next = isDark ? 'light' : 'dark';
-  root.setAttribute('data-bs-theme', next);
-  document.getElementById('ms-dark-btn').textContent = next === 'dark' ? '☀' : '☾';
-  try { localStorage.setItem('ms-theme', next); } catch(e) {}
-}
-
-function applyStoredTheme() {
-  let theme = 'light';
-  try { theme = localStorage.getItem('ms-theme') || 'light'; } catch(e) {}
-  const root = document.getElementById('ms-root');
-  root.setAttribute('data-bs-theme', theme);
-  document.getElementById('ms-dark-btn').textContent = theme === 'dark' ? '☀' : '☾';
-}
 
 async function loadVersion() {
   try {
@@ -985,7 +973,6 @@ async function loadVersion() {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
-  applyStoredTheme();
   updateDaemonBadge();
   await Promise.all([loadFonts(), loadMusic(), loadModels()]);
   await loadConfig();
