@@ -18,7 +18,7 @@ fi
 
 FILENAME="plugin.fpp-matrixscroller.backup.${NAME}.json"
 
-curl -sf -X POST http://localhost/api/plugin/fpp-matrixscroller/restore \
+curl -sf --connect-timeout 3 --max-time 5 -X POST http://localhost/api/plugin/fpp-matrixscroller/restore \
     -H 'Content-Type: application/json' \
     -d "{\"filename\": \"$(echo "$FILENAME" | sed 's/"/\\"/g')\"}" \
     || { echo "ERROR: could not reach matrixscroller daemon"; exit 1; }

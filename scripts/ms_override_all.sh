@@ -25,7 +25,7 @@ else
     ACTION="set to: $MESSAGE on all panels"
 fi
 
-curl -sf -X POST http://localhost/api/plugin/fpp-matrixscroller/message/all \
+curl -sf --connect-timeout 3 --max-time 5 -X POST http://localhost/api/plugin/fpp-matrixscroller/message/all \
     -H 'Content-Type: application/json' \
     -d "$BODY" \
     || { echo "ERROR: could not reach matrixscroller daemon"; exit 1; }

@@ -14,7 +14,7 @@ if [[ "$ENABLE" != "0" && "$ENABLE" != "1" ]]; then
     exit 1
 fi
 
-curl -sf -X POST http://localhost/api/plugin/fpp-matrixscroller/output \
+curl -sf --connect-timeout 3 --max-time 5 -X POST http://localhost/api/plugin/fpp-matrixscroller/output \
     -H 'Content-Type: application/json' \
     -d "{\"enable\": $([ "$ENABLE" = "1" ] && echo true || echo false)}" \
     || { echo "ERROR: could not reach matrixscroller daemon"; exit 1; }

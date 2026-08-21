@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-curl -sf -X POST http://localhost/api/plugin/fpp-matrixscroller/reload \
+curl -sf --connect-timeout 3 --max-time 5 -X POST http://localhost/api/plugin/fpp-matrixscroller/reload \
     -H 'Content-Type: application/json' \
     || { echo "ERROR: could not reach matrixscroller daemon"; exit 1; }
 

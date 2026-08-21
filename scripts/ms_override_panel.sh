@@ -30,7 +30,7 @@ else
     ACTION="set to: $MESSAGE"
 fi
 
-curl -sf -X POST http://localhost/api/plugin/fpp-matrixscroller/message \
+curl -sf --connect-timeout 3 --max-time 5 -X POST http://localhost/api/plugin/fpp-matrixscroller/message \
     -H 'Content-Type: application/json' \
     -d "$BODY" \
     || { echo "ERROR: could not reach matrixscroller daemon"; exit 1; }
