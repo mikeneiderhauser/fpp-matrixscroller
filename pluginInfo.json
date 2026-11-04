@@ -7,6 +7,7 @@
 	"srcURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller.git",
 	"bugURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller/issues",
 	"iconURL": "https://raw.githubusercontent.com/mikeneiderhauser/fpp-matrixscroller/master/icon.png",
+	"releaseNotesStyle": "gitHistory",
 
 	"privacy": {
 		"summary": "Scrolls the playing song's title and artist, or your own text, across matrix models on this player. It talks only to FPP on this device unless you point it at another player.",
