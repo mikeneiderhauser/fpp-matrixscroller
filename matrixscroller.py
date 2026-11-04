@@ -376,6 +376,7 @@ class PanelController:
         self._last_sent_at: float = 0.0   # used only for the 1-second startup guard
         self._effect_active: bool = False
         self._effect_done_at: float = 0.0  # monotonic time when effect completion was first detected
+        self._warned_no_model: bool = False  # warn once per config, not on every poll
 
     def _get_song_overrides(self, song_key: str) -> dict:
         """Return the song_overrides entry matching song_key (case-insensitive, extension-optional)."""
@@ -481,7 +482,9 @@ class PanelController:
 
             model = self.cfg.get("model", "")
             if not model:
-                log.warning("Panel '%s' has no model set, skipping", self.cfg.get("name"))
+                if not self._warned_no_model:
+                    log.warning("Panel '%s' has no model set, skipping", self.cfg.get("name"))
+                    self._warned_no_model = True
                 return
             if not message:
                 log.debug("Panel '%s' empty message, clearing", self.cfg.get("name"))
@@ -576,6 +579,7 @@ class PanelController:
     def update_cfg(self, panel_cfg: dict, global_cfg: dict = None):
         with self._lock:
             self.cfg = panel_cfg
+            self._warned_no_model = False
             if global_cfg is not None:
                 self.gcfg = global_cfg
             self._stop_effect()
