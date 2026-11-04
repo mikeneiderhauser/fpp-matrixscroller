@@ -15,6 +15,7 @@ FPP plugin that scrolls the playing song's title and artist (from its MP3 tags),
 - **Enable Output toggle** — suppress all overlay effects without stopping the daemon
 - **Daemon controls** — Start, Stop, and Restart the daemon from the web UI
 - **Config Snapshots** — save named snapshots (pre-filled with a timestamp), download/upload config as JSON, restore from any saved snapshot
+- **FPP Commands** — turn all panels or one panel on/off, show or clear a message (optionally for a set time), restore a snapshot; from playlists, the scheduler, MQTT or another FPP
 - **REST API** — get/set config, status, manual message overrides, version info (useful for Home Assistant automations)
 - **Autostart** — starts automatically on install and on every FPP daemon start (`scripts/postStart.sh`), and stops with it (`scripts/preStop.sh`)
 - **Web UI** — configure all panels from the FPP plugin page; honors FPP's dark/light mode setting; git commit shown in page footer
@@ -269,9 +270,23 @@ A sequence override also makes a sequence without audio display as media on that
 }
 ```
 
+## FPP Commands
+
+The plugin adds these FPP commands. Use them anywhere FPP runs a command: a playlist's **FPP Command** entry, the scheduler, command presets, MQTT, button plugins, or another FPP's remote command.
+
+| Command | Options | Does |
+|---------|---------|------|
+| **Matrix Scroller - All Panels State** | On / Off / Toggle | The global on/off for every panel at once (the **Enable Output** switch). Each panel keeps its own setting, so turning all panels back on restores them as they were |
+| **Matrix Scroller - Panel State** | Panel, On / Off / Toggle | Turns one panel on or off and saves it (its **Enabled** checkbox). A panel that is on still shows nothing while All Panels State is Off |
+| **Matrix Scroller - Show Message** | Panel (or All panels), Message, Duration | Shows your text instead of song info. With a duration (seconds) it clears itself afterwards; `0` keeps it until cleared |
+| **Matrix Scroller - Clear Message** | Panel (or All panels) | Returns to normal song / idle display |
+| **Matrix Scroller - Restore Snapshot** | Snapshot | Applies a saved config snapshot |
+
+Panels and snapshots are picked from dropdowns. Each command and option has a description in FPP's command editor.
+
 ## Playlist Automation
 
-Three shell scripts are installed to `/home/fpp/media/scripts/` and appear in the FPP playlist editor under **Run Script**. Use them to automate the plugin as your show changes phases.
+The FPP commands above are the simplest way to automate the plugin. The older shell scripts below still work: they are installed to `/home/fpp/media/scripts/` and appear in the FPP playlist editor under **Run Script**.
 
 ### ms_enable_output.sh
 

@@ -19,6 +19,10 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'POST', 'endpoint' => 'message',     'callback' => 'fppmatrixscrollerMessage'),
         array('method' => 'POST', 'endpoint' => 'message/all', 'callback' => 'fppmatrixscrollerMessageAll'),
         array('method' => 'POST', 'endpoint' => 'output',      'callback' => 'fppmatrixscrollerOutput'),
+        array('method' => 'POST', 'endpoint' => 'panel',       'callback' => 'fppmatrixscrollerPanel'),
+        array('method' => 'GET',  'endpoint' => 'panels',        'callback' => 'fppmatrixscrollerPanels'),
+        array('method' => 'GET',  'endpoint' => 'panel-targets', 'callback' => 'fppmatrixscrollerPanelTargets'),
+        array('method' => 'GET',  'endpoint' => 'snapshots',     'callback' => 'fppmatrixscrollerSnapshots'),
         array('method' => 'POST', 'endpoint' => 'reload',      'callback' => 'fppmatrixscrollerReload'),
         array('method' => 'GET',  'endpoint' => 'version',        'callback' => 'fppmatrixscrollerVersion'),
         array('method' => 'GET',  'endpoint' => 'fonts',          'callback' => 'fppmatrixscrollerFonts'),
@@ -101,6 +105,10 @@ function fppmatrixscrollerPostConfig() { return fppmatrixscrollerDaemonRequest('
 function fppmatrixscrollerMessage()    { return fppmatrixscrollerDaemonRequest('message', 'POST'); }
 function fppmatrixscrollerMessageAll() { return fppmatrixscrollerDaemonRequest('message/all', 'POST'); }
 function fppmatrixscrollerOutput()     { return fppmatrixscrollerDaemonRequest('output', 'POST'); }
+function fppmatrixscrollerPanel()      { return fppmatrixscrollerDaemonRequest('panel', 'POST'); }
+function fppmatrixscrollerPanels()       { return fppmatrixscrollerDaemonRequest('panels'); }
+function fppmatrixscrollerPanelTargets() { return fppmatrixscrollerDaemonRequest('panel-targets'); }
+function fppmatrixscrollerSnapshots()    { return fppmatrixscrollerDaemonRequest('snapshots'); }
 function fppmatrixscrollerReload()     { return fppmatrixscrollerDaemonRequest('reload', 'POST'); }
 function fppmatrixscrollerDaemonStop()    { return fppmatrixscrollerDaemonRequest('daemon/stop', 'POST'); }
 function fppmatrixscrollerDaemonRestart() { return fppmatrixscrollerDaemonRequest('daemon/restart', 'POST'); }
