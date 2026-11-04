@@ -14,13 +14,9 @@ done
 # Left by versions that kept a PID file
 rm -f /var/run/fppd/matrixscroller.pid
 
-# Settings and snapshots survive a Reinstall (FPP 10.4+ sets
-# FPP_PLUGIN_REINSTALL=1 for its uninstall half); any other uninstall,
-# including a Reinstall on FPP 10.3 and earlier, removes them.
-if [ "${FPP_PLUGIN_REINSTALL:-0}" != "1" ]; then
-    rm -f "$MS_MEDIADIR/config/plugin.fpp-matrixscroller.json"
-    rm -f "$MS_MEDIADIR/config/plugin.fpp-matrixscroller.backup."*.json
-    rm -rf "$MS_MEDIADIR/plugindata/fpp-matrixscroller"
-fi
+# Settings (config/plugin.fpp-matrixscroller.json) and snapshots
+# (plugindata/fpp-matrixscroller/) are kept, as FPP itself keeps plugin
+# settings: FPP 10.3 and earlier don't tell a Reinstall from an uninstall,
+# and "Reinstall All" after an OS upgrade would otherwise wipe them.
 
 echo "fpp-matrixscroller uninstall complete"

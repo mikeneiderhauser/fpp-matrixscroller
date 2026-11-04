@@ -58,7 +58,12 @@ In all cases, `fpp_install.sh` deploys the playlist scripts, creates the log and
 
 ### Uninstalling
 
-Uninstalling removes the playlist scripts, your settings and your snapshots. A **Reinstall** keeps settings and snapshots on FPP 10.4 and later; on FPP 10.3 and earlier it removes them too, so download a snapshot first if you want to keep it.
+Uninstalling stops the daemon and removes the playlist scripts. Your settings and snapshots are kept, so a Reinstall (or FPP's **Reinstall All** after an OS upgrade) picks them up again. To remove them too, delete them after uninstalling:
+
+```bash
+rm -f /home/fpp/media/config/plugin.fpp-matrixscroller.json
+rm -rf /home/fpp/media/plugindata/fpp-matrixscroller
+```
 
 Config is stored at:
 ```
@@ -139,7 +144,7 @@ plugin.fpp-matrixscroller.backup.<name>.json
 
 Where `<name>` is the user-provided name (the UI pre-fills it with a timestamp like `20260101-120000`).
 
-> **Uninstalling removes your settings and snapshots.** A Reinstall keeps them on FPP 10.4 and later. On FPP 10.3 and earlier a Reinstall is a plain uninstall plus install and removes them too, so download a snapshot first if you want to keep it.
+Snapshots are kept when the plugin is uninstalled (see [Uninstalling](#uninstalling)).
 
 Save a snapshot via API:
 
