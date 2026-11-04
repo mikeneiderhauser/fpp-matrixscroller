@@ -9,6 +9,8 @@ PLUGIN_DIR=$(cd "$(dirname "$0")/.." && pwd)
 chmod +x "$PLUGIN_DIR/plugin_event.sh"
 chmod +x "$PLUGIN_DIR/matrixscroller.py"
 chmod +x "$PLUGIN_DIR/scripts/fpp_uninstall.sh"
+# fppd runs these directly (FPP commands and the callbacks script)
+chmod +x "$PLUGIN_DIR/callbacks.sh" "$PLUGIN_DIR"/commands/*.sh
 
 mkdir -p "$MS_LOGDIR"
 mkdir -p "$MS_MEDIADIR/config"

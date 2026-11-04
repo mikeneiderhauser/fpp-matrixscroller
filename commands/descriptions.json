@@ -1,0 +1,47 @@
+[
+    {
+        "name": "Matrix Scroller - All Panels",
+        "script": "all_panels.sh",
+        "args": [
+            { "name": "State", "description": "State", "type": "string", "optional": false,
+              "contents": ["On", "Off", "Toggle"], "default": "On" }
+        ]
+    },
+    {
+        "name": "Matrix Scroller - Panel",
+        "script": "panel.sh",
+        "args": [
+            { "name": "Panel", "description": "Panel", "type": "string", "optional": false,
+              "contentListUrl": "api/plugin/fpp-matrixscroller/panels", "allowBlanks": false },
+            { "name": "State", "description": "State", "type": "string", "optional": false,
+              "contents": ["On", "Off", "Toggle"], "default": "On" }
+        ]
+    },
+    {
+        "name": "Matrix Scroller - Show Message",
+        "script": "show_message.sh",
+        "args": [
+            { "name": "Panel", "description": "Panel", "type": "string", "optional": false,
+              "contentListUrl": "api/plugin/fpp-matrixscroller/panel-targets", "allowBlanks": false, "default": "all" },
+            { "name": "Message", "description": "Message", "type": "string", "optional": false },
+            { "name": "Duration", "description": "Duration (0 = until cleared)", "type": "int", "optional": true,
+              "min": 0, "max": 86400, "default": "0", "unit": "seconds" }
+        ]
+    },
+    {
+        "name": "Matrix Scroller - Clear Message",
+        "script": "clear_message.sh",
+        "args": [
+            { "name": "Panel", "description": "Panel", "type": "string", "optional": false,
+              "contentListUrl": "api/plugin/fpp-matrixscroller/panel-targets", "allowBlanks": false, "default": "all" }
+        ]
+    },
+    {
+        "name": "Matrix Scroller - Restore Snapshot",
+        "script": "restore_snapshot.sh",
+        "args": [
+            { "name": "Snapshot", "description": "Snapshot", "type": "string", "optional": false,
+              "contentListUrl": "api/plugin/fpp-matrixscroller/snapshots", "allowBlanks": false }
+        ]
+    }
+]

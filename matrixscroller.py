@@ -610,6 +610,7 @@ class MatrixScrollerDaemon:
         self._lock = threading.Lock()
         self._no_media_since: Dict[str, Optional[float]] = {}
         self._message_overrides: Dict[str, Optional[str]] = {}
+        self._override_expires: Dict[str, float] = {}  # panel id -> monotonic time a timed message ends
         self._current_song = ""
         self._output_enabled: Optional[bool] = None  # last seen enable_output, None until first poll
         self._media_meta: dict = {}               # format.tags for current song
@@ -647,12 +648,55 @@ class MatrixScrollerDaemon:
         self._rebuild_panels()
         log.debug("Config reloaded")
 
-    def set_override(self, panel_id: str, message: Optional[str]):
-        """Set or clear a manual message override for a panel."""
+    def set_override(self, panel_id: str, message: Optional[str], duration: float = 0):
+        """Set or clear a manual message override for a panel.
+        A duration (seconds) clears it again on its own; 0 keeps it until cleared."""
         with self._lock:
             self._message_overrides[panel_id] = message
+            if message is not None and duration > 0:
+                self._override_expires[panel_id] = time.monotonic() + duration
+            else:
+                self._override_expires.pop(panel_id, None)
         if panel_id in self.panels:
             self.panels[panel_id].force_resend()
+
+    def _expire_overrides(self):
+        """Clear message overrides whose duration has run out."""
+        now = time.monotonic()
+        with self._lock:
+            expired = [pid for pid, t in self._override_expires.items() if now >= t]
+            for pid in expired:
+                self._message_overrides[pid] = None
+                del self._override_expires[pid]
+        for pid in expired:
+            log.info("Message on panel '%s' expired", pid)
+            if pid in self.panels:
+                self.panels[pid].force_resend()
+
+    def set_panel_enabled(self, panel_id: str, enabled) -> Optional[bool]:
+        """Turn one panel on/off (enabled: True, False or "toggle") and save it.
+        Returns the new state, or None if no panel has that id."""
+        for pcfg in self.config.get("panels", []):
+            if pcfg.get("id") == panel_id:
+                new = (not pcfg.get("enabled", True)) if enabled == "toggle" else bool(enabled)
+                pcfg["enabled"] = new
+                save_config(self.config)
+                with self._lock:
+                    panel = self.panels.get(panel_id)
+                if panel is not None:
+                    panel.update_cfg(pcfg, self._global())  # stops a running effect
+                log.info("Panel '%s' %s", panel_id, "enabled" if new else "disabled")
+                return new
+        return None
+
+    def panel_names(self) -> dict:
+        """{panel id: panel name}, for FPP command dropdowns."""
+        return {p.get("id"): p.get("name") or p.get("id")
+                for p in self.config.get("panels", []) if p.get("id")}
+
+    def snapshot_names(self) -> dict:
+        """{snapshot filename: snapshot name}, for FPP command dropdowns."""
+        return {f: f[len(_BACKUP_PREFIX):-len(".json")] for f in self.list_backups()}
 
     def _get_current_song_key(self, status: dict) -> str:
         """Return the current media filename without extension for song_overrides lookup."""
@@ -729,6 +773,7 @@ class MatrixScrollerDaemon:
         return found
 
     def poll_once(self):
+        self._expire_overrides()
         if not self._global().get("enable_output", True):
             # Stop once on the transition rather than hitting FPP every poll
             if self._output_enabled is not False:
@@ -920,20 +965,22 @@ class MatrixScrollerDaemon:
             log.error("Failed to delete backup %s: %s", filename, e)
             return False
 
-    def set_output(self, enabled: bool):
-        """Enable or disable overlay output without a full config round-trip."""
-        self.config.setdefault("global", {})["enable_output"] = enabled
+    def set_output(self, enabled) -> bool:
+        """Enable or disable overlay output (True, False or "toggle") without a
+        full config round-trip. Returns the new state."""
+        g = self.config.setdefault("global", {})
+        new = (not g.get("enable_output", True)) if enabled == "toggle" else bool(enabled)
+        g["enable_output"] = new
         save_config(self.config)
-        log.info("Output %s", "enabled" if enabled else "disabled")
+        log.info("Output %s", "enabled" if new else "disabled")
+        return new
 
-    def set_override_all(self, message: Optional[str]) -> list:
+    def set_override_all(self, message: Optional[str], duration: float = 0) -> list:
         """Set or clear a manual message override on every configured panel."""
         with self._lock:
             panel_ids = list(self.panels.keys())
-            for panel_id in panel_ids:
-                self._message_overrides[panel_id] = message
-        for panel in self.panels.values():
-            panel.force_resend()
+        for panel_id in panel_ids:
+            self.set_override(panel_id, message, duration)
         return panel_ids
 
     def delete_all_backups(self) -> int:
@@ -963,6 +1010,14 @@ class MatrixScrollerDaemon:
 # ── REST API ──────────────────────────────────────────────────────────────────
 
 _daemon: Optional[MatrixScrollerDaemon] = None
+
+
+def _duration(body: dict) -> float:
+    """The optional "duration" (seconds) of a message request; 0 if absent or invalid."""
+    try:
+        return max(0.0, float(body.get("duration") or 0))
+    except (TypeError, ValueError):
+        return 0.0
 
 
 class ApiHandler(BaseHTTPRequestHandler):
@@ -1012,6 +1067,16 @@ class ApiHandler(BaseHTTPRequestHandler):
         elif path == "/api/plugin/matrixscroller/backups":
             self._send_json(200, _daemon.list_backups())
 
+        # Dropdowns for the plugin's FPP commands ({value: label})
+        elif path == "/api/plugin/matrixscroller/panels":
+            self._send_json(200, _daemon.panel_names())
+
+        elif path == "/api/plugin/matrixscroller/panel-targets":
+            self._send_json(200, {"all": "All panels", **_daemon.panel_names()})
+
+        elif path == "/api/plugin/matrixscroller/snapshots":
+            self._send_json(200, _daemon.snapshot_names())
+
         elif path == "/api/plugin/matrixscroller/backup/download":
             qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
             filename = qs.get("filename", [""])[0]
@@ -1040,7 +1105,8 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "ok"})
 
         elif path == "/api/plugin/matrixscroller/message":
-            # Body: {"panel_id": "panel_1", "message": "Hello!"} or message=null to clear
+            # Body: {"panel_id": "panel_1", "message": "Hello!", "duration": 30}
+            # message=null clears; duration (seconds, optional) clears it on its own
             body = self._read_json()
             if body is None:
                 self._send_json(400, {"error": "Invalid JSON"})
@@ -1050,8 +1116,25 @@ class ApiHandler(BaseHTTPRequestHandler):
             if not panel_id:
                 self._send_json(400, {"error": "panel_id required"})
                 return
-            _daemon.set_override(panel_id, message)
-            self._send_json(200, {"status": "ok", "panel_id": panel_id, "message": message})
+            duration = _duration(body)
+            _daemon.set_override(panel_id, message, duration)
+            self._send_json(200, {"status": "ok", "panel_id": panel_id, "message": message, "duration": duration})
+
+        elif path == "/api/plugin/matrixscroller/panel":
+            # Body: {"panel_id": "panel_1", "enabled": true | false | "toggle"}
+            body = self._read_json()
+            if body is None or not body.get("panel_id") or "enabled" not in body:
+                self._send_json(400, {"error": "panel_id and enabled required"})
+                return
+            enabled = body["enabled"]
+            if enabled != "toggle" and not isinstance(enabled, bool):
+                self._send_json(400, {"error": "enabled must be true, false or \"toggle\""})
+                return
+            new = _daemon.set_panel_enabled(body["panel_id"], enabled)
+            if new is None:
+                self._send_json(404, {"error": "No panel with that panel_id"})
+            else:
+                self._send_json(200, {"status": "ok", "panel_id": body["panel_id"], "enabled": new})
 
         elif path == "/api/plugin/matrixscroller/reload":
             _daemon.reload_config()
@@ -1093,12 +1176,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "ok", "deleted": count})
 
         elif path == "/api/plugin/matrixscroller/output":
+            # Body: {"enable": true | false | "toggle"}
             body = self._read_json()
             if body is None or "enable" not in body:
                 self._send_json(400, {"error": "enable field required"})
                 return
-            _daemon.set_output(bool(body["enable"]))
-            self._send_json(200, {"status": "ok", "enable_output": bool(body["enable"])})
+            new = _daemon.set_output("toggle" if body["enable"] == "toggle" else bool(body["enable"]))
+            self._send_json(200, {"status": "ok", "enable_output": new})
 
         elif path == "/api/plugin/matrixscroller/message/all":
             body = self._read_json()
@@ -1106,8 +1190,9 @@ class ApiHandler(BaseHTTPRequestHandler):
                 self._send_json(400, {"error": "Invalid JSON"})
                 return
             message = body.get("message")  # None clears all overrides
-            panels = _daemon.set_override_all(message)
-            self._send_json(200, {"status": "ok", "panels": panels, "message": message})
+            duration = _duration(body)
+            panels = _daemon.set_override_all(message, duration)
+            self._send_json(200, {"status": "ok", "panels": panels, "message": message, "duration": duration})
 
         elif path == "/api/plugin/matrixscroller/daemon/stop":
             self._send_json(200, {"status": "stopping"})
