@@ -809,15 +809,15 @@ function renderSongOverrideRow(panelIdx, i, ov) {
       </div>
     </div>
     <div class="row g-2 mt-2">
-      <div class="col-4">
+      <div class="col-12 col-sm-4">
         <label class="form-label form-label-sm mb-1">Artist Override</label>
         <input type="text" id="${pfx}_artist" class="form-control form-control-sm" placeholder="use metadata" value="${escHtml(ov.artist||'')}">
       </div>
-      <div class="col-4">
+      <div class="col-12 col-sm-4">
         <label class="form-label form-label-sm mb-1">Title Override</label>
         <input type="text" id="${pfx}_title" class="form-control form-control-sm" placeholder="use metadata" value="${escHtml(ov.title||'')}">
       </div>
-      <div class="col-4">
+      <div class="col-12 col-sm-4">
         <label class="form-label form-label-sm mb-1">Album Override</label>
         <input type="text" id="${pfx}_album" class="form-control form-control-sm" placeholder="use metadata" value="${escHtml(ov.album||'')}">
       </div>
