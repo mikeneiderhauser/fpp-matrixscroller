@@ -3,7 +3,14 @@ set -euo pipefail
 
 # fpp-matrixscroller install script
 
+# FPP runs this as root. Run by hand as fpp, it couldn't stop the root daemon
+# FPP started, so become root the same way when sudo allows it.
+if [ "$(id -u)" -ne 0 ] && sudo -n true 2>/dev/null; then
+    exec sudo -n bash "$0" "$@"
+fi
+
 PLUGIN_DIR=$(cd "$(dirname "$0")/.." && pwd)
+. "$PLUGIN_DIR/scripts/daemon_lib.sh"
 
 chmod +x "$PLUGIN_DIR/plugin_event.sh"
 chmod +x "$PLUGIN_DIR/matrixscroller.py"
@@ -21,26 +28,9 @@ for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh ms
 done
 echo "Playlist scripts installed to /home/fpp/media/scripts"
 
-PIDFILE="/var/run/fppd/matrixscroller.pid"
-LOGFILE="/home/fpp/media/logs/fpp-matrixscroller.log"
-COMMIT=$(git -C "$PLUGIN_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-echo "fpp-matrixscroller @ $COMMIT"
-
-# Stop any running daemon so it picks up the new code
-if [ -f "$PIDFILE" ]; then
-    PID=$(cat "$PIDFILE")
-    if kill -0 "$PID" 2>/dev/null && grep -q "matrixscroller" /proc/$PID/cmdline 2>/dev/null; then
-        echo "Stopping fpp-matrixscroller daemon (PID $PID) for update..."
-        kill "$PID"
-        sleep 1
-        kill -0 "$PID" 2>/dev/null && kill -9 "$PID" || true
-    fi
-    rm -f "$PIDFILE"
-fi
-
-python3 "$PLUGIN_DIR/matrixscroller.py" >> "$LOGFILE" 2>&1 &
-echo $! > "$PIDFILE"
-echo "fpp-matrixscroller daemon started (PID $!)"
+# Restart the daemon so it picks up the new code. If the old one can't be
+# stopped, fail rather than start a second daemon beside it.
+ms_stop_daemon
+ms_start_daemon
 
 echo "fpp-matrixscroller install complete"
