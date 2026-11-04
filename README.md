@@ -1,11 +1,12 @@
 # fpp-matrixscroller
 
-FPP plugin that reads MP3 metadata from the currently playing sequence and scrolls it across one or more pixel matrix panels using FPP's native Overlay Model Effect API.
+FPP plugin that scrolls the playing song's title and artist (from its MP3 tags), or your own text, across one or more pixel matrix panels using FPP's native Overlay Model Effect API. Between songs, and during sequences without audio, it shows a configurable idle message.
 
 ## Features
 
 - **N matrix panels** — each with fully independent configuration
 - **Two modes per panel** — Media Playing and Media Idle (with configurable timeout)
+- **Sequences without audio** — animation-only FSEQs show the Media Idle message by default, detected from the FSEQ's xLights header; works on a multisync remote too
 - **Configurable message fields** — Pre-Roll, Tune To, Song Info, Post-Roll, Gap separator; each independently enabled per mode
 - **Song info order** — Title · Artist · Album, joined with ` - `; each field individually enabled
 - **Song and sequence overrides** — override color, font, direction, speed, and artist/title/album text for a specific song or FSEQ sequence; or suppress the overlay entirely for one
@@ -15,13 +16,13 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 - **Daemon controls** — Start, Stop, and Restart the daemon from the web UI
 - **Config Snapshots** — save named snapshots (pre-filled with a timestamp), download/upload config as JSON, restore from any saved snapshot
 - **REST API** — get/set config, status, manual message overrides, version info (useful for Home Assistant automations)
-- **Autostart** — starts automatically on install and on every FPP daemon start via `plugin_event.sh`
+- **Autostart** — starts automatically on install and on every FPP daemon start (`scripts/postStart.sh`), and stops with it (`scripts/preStop.sh`)
 - **Web UI** — configure all panels from the FPP plugin page; honors FPP's dark/light mode setting; git commit shown in page footer
 - **Log level integration** — respects FPP's **Settings → Logs → Plugin** log level; set to `Debug` for verbose output, `Info` for quiet operation
 
 ## Requirements
 
-- FPP 8.0+ (primarily tested on FPP 10)
+- FPP 9.0+ (primarily tested on FPP 10)
 - Python 3.7+
 - One or more Pixel Overlay models configured in FPP
 
@@ -46,12 +47,18 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 ```bash
 cd /home/fpp/media/plugins
 git clone https://github.com/mikeneiderhauser/fpp-matrixscroller
-bash /home/fpp/media/plugins/fpp-matrixscroller/scripts/fpp_install.sh
+sudo bash /home/fpp/media/plugins/fpp-matrixscroller/scripts/fpp_install.sh
 ```
+
+Run the install script as root, as FPP does. Run as `fpp` it can't restart a daemon FPP already started, so it stops with an error rather than start a second one.
 
 ---
 
-In all cases, `fpp_install.sh` deploys the playlist scripts, creates the log and config directories, and starts the daemon. On subsequent boots FPP calls `plugin_event.sh fppd_start` to restart it automatically.
+In all cases, `fpp_install.sh` deploys the playlist scripts, creates the log and config directories, and starts the daemon. FPP then starts it on every fppd start (`scripts/postStart.sh`) and stops it before fppd stops (`scripts/preStop.sh`).
+
+### Uninstalling
+
+Uninstalling removes the playlist scripts, your settings and your snapshots. A **Reinstall** keeps settings and snapshots on FPP 10.4 and later; on FPP 10.3 and earlier it removes them too, so download a snapshot first if you want to keep it.
 
 Config is stored at:
 ```
@@ -66,7 +73,7 @@ Open the plugin page in FPP's web interface. The UI includes:
 - **FPP Status Bar** — current song, progress bar, and embedded ID3 tags
 - **Panel Status** — live mode badge, active message, and manual message override per panel
 - **Panels** — full per-panel config including display settings, message fields, and song/sequence overrides
-- **Global Settings** — FPP host, poll interval, media idle timeout, Enable Output toggle
+- **Global Settings** — FPP host, poll interval, media idle timeout, Sequence Without Audio, Enable Output toggle
 - **Daemon Control** — Start / Restart / Stop with live Online/Offline badge
 - **Config Snapshots** — save a named snapshot (timestamp pre-filled), download the current config as JSON, upload a JSON file to restore, or select a previous snapshot and restore it
 

@@ -48,6 +48,8 @@ Returns the current running state of the daemon and all configured panels.
 }
 ```
 
+A panel's `song_key` is the `song_overrides` key in use (e.g. `TuneToPixel2.fseq`) when an override matches what is playing; otherwise, in `media` mode, it is the playing media or sequence name without its extension, and `""` in any other mode.
+
 **Panel `mode` values**
 
 | Value | Meaning |
