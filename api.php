@@ -76,19 +76,23 @@ function fppmatrixscrollerFonts() {
     return fppmatrixscrollerDaemonRequest('fonts');
 }
 
-function fppmatrixscrollerMusic() {
-    $resp = @file_get_contents('http://localhost/api/files/music');
+// FPP's file list for a media directory, without the <name>.patch.<offset>
+// pieces of an upload still in progress, which can't be played
+function fppmatrixscrollerFileList($dir) {
+    $resp = @file_get_contents('http://localhost/api/files/' . $dir);
     if ($resp === false) return json(array('files' => array()));
     $data = json_decode($resp, true);
-    return json($data ?: array('files' => array()));
+    if (!is_array($data)) return json(array('files' => array()));
+    if (isset($data['files']) && is_array($data['files'])) {
+        $data['files'] = array_values(array_filter($data['files'], function ($f) {
+            return !preg_match('/\.patch\.\d+$/', isset($f['name']) ? $f['name'] : '');
+        }));
+    }
+    return json($data);
 }
 
-function fppmatrixscrollerSequences() {
-    $resp = @file_get_contents('http://localhost/api/files/sequences');
-    if ($resp === false) return json(array('files' => array()));
-    $data = json_decode($resp, true);
-    return json($data ?: array('files' => array()));
-}
+function fppmatrixscrollerMusic()     { return fppmatrixscrollerFileList('music'); }
+function fppmatrixscrollerSequences() { return fppmatrixscrollerFileList('sequences'); }
 
 function fppmatrixscrollerStatus()     { return fppmatrixscrollerDaemonRequest('status'); }
 function fppmatrixscrollerGetConfig()  { return fppmatrixscrollerDaemonRequest('config'); }

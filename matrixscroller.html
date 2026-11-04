@@ -362,13 +362,25 @@ function fontOptions(selected) {
   ).join('');
 }
 
-function musicOptions(selected) {
+// `filter` keeps names containing every word typed (case-insensitive); the
+// current selection always stays so filtering never changes what is saved
+function musicOptions(selected, filter = '') {
+  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const matches = f => words.every(w => f.toLowerCase().includes(w));
   const opt = f => `<option value="${escHtml(f)}" ${f===(selected||'')?'selected':''}>${escHtml(f)||'-- Select Song or Sequence --'}</option>`;
-  const group = (label, list) => list.length ? `<optgroup label="${label}">${list.map(opt).join('')}</optgroup>` : '';
+  const group = (label, list) => {
+    const shown = list.filter(f => f === selected || matches(f));
+    return shown.length ? `<optgroup label="${label}">${shown.map(opt).join('')}</optgroup>` : '';
+  };
   // Keep a saved key selectable even when its file isn't on this FPP
   const known = selected && (musicFiles.includes(selected) || sequenceFiles.includes(selected));
   return opt('') + (selected && !known ? opt(selected) : '') +
     group('Media', musicFiles) + group('Sequences', sequenceFiles);
+}
+
+function filterOverrideKeys(pfx, text) {
+  const sel = document.getElementById(`${pfx}_key`);
+  if (sel) sel.innerHTML = musicOptions(sel.value, text);
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -756,7 +768,8 @@ function renderSongOverrideRow(panelIdx, i, ov) {
     <div class="card-body p-2">
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
       <div class="flex-grow-1" style="min-width:11rem;">
-        <label class="form-label form-label-sm mb-1">Song or Sequence</label>
+        <label class="form-label form-label-sm mb-1" for="${pfx}_key">Song or Sequence</label>
+        <input type="search" class="form-control form-control-sm mb-1" placeholder="Search songs and sequences&hellip;" aria-label="Search songs and sequences" oninput="filterOverrideKeys('${pfx}', this.value)">
         <select id="${pfx}_key" class="form-select form-select-sm">${musicOptions(ov.key||'')}</select>
       </div>
       <div class="d-flex align-items-center gap-3 mt-3 flex-shrink-0">
