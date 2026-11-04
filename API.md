@@ -53,7 +53,7 @@ Returns the current running state of the daemon and all configured panels.
 | Value | Meaning |
 |-------|---------|
 | `media` | Media is playing, song info is scrolling |
-| `no_media` | No media for longer than `no_media_timeout` seconds |
+| `no_media` | No media (or only a sequence without audio, when `sequence_only` is `idle`) for longer than `no_media_timeout` seconds |
 | `override` | A manual message override is active |
 | `""` | Panel stopped / daemon just started |
 
@@ -73,7 +73,8 @@ Returns the full active configuration.
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
-    "no_media_timeout": 5.0
+    "no_media_timeout": 5.0,
+    "sequence_only": "idle"
   },
   "panels": [
     {

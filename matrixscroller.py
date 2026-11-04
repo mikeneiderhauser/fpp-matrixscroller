@@ -236,6 +236,17 @@ def get_fpp_media_meta(host: str, filename: str) -> dict:
     return {}
 
 
+def get_fpp_sequence_media(host: str, sequence: str) -> Optional[str]:
+    """Return the media basename recorded in an FSEQ's 'mf' header, "" if it has
+    none (an animation-only sequence), or None if FPP could not be asked."""
+    name = os.path.splitext(os.path.basename(sequence))[0]
+    data = fpp_get(host, f"/api/sequence/{quote(name, safe='')}/meta", timeout=5.0)
+    if not isinstance(data, dict):
+        return None
+    mf = (data.get("variableHeaders", {}) or {}).get("mf", "") or ""
+    # xLights records the path on the machine that rendered it: / or \ separated
+    return re.split(r"[\\/]", mf.strip())[-1]
+
 
 # ── Text sanitisation ─────────────────────────────────────────────────────────
 
@@ -535,6 +546,8 @@ class MatrixScrollerDaemon:
         self._output_enabled: Optional[bool] = None  # last seen enable_output, None until first poll
         self._media_meta: dict = {}               # format.tags for current song
         self._media_meta_key: str = ""            # song_key for which meta was fetched
+        self._seq_media: Optional[str] = None     # FSEQ 'mf' media basename for current sequence
+        self._seq_media_key: str = ""             # sequence for which _seq_media was fetched
         self._rebuild_panels()
 
     def _global(self) -> dict:
@@ -589,15 +602,47 @@ class MatrixScrollerDaemon:
         title  = _sanitize_text((meta.get("title")  or "").strip())
         album  = _sanitize_text((meta.get("album")  or "").strip())
         fallback = ""
-        for field in ("current_song", "current_sequence"):
-            val = (status.get(field) or "").strip()
+        # A remote without the media file reports no current_song; the FSEQ's
+        # mf header still names the song, usually better than the FSEQ name.
+        for val in (status.get("current_song"), self._seq_media, status.get("current_sequence")):
+            val = (val or "").strip()
             if val:
                 fallback = _sanitize_text(os.path.splitext(os.path.basename(val))[0])
                 break
         return {"artist": artist, "title": title, "album": album, "fallback": fallback}
 
+    def _update_seq_media(self, host: str, status: dict):
+        """Fetch the current sequence's mf header once per sequence."""
+        seq = (status.get("current_sequence") or "").strip()
+        if seq == "Global Pause":
+            seq = ""  # not a file, nothing to look up
+        if seq == self._seq_media_key and self._seq_media is not None:
+            return
+        self._seq_media = get_fpp_sequence_media(host, seq) if seq else ""
+        self._seq_media_key = seq
+        if seq:
+            log.debug("Sequence '%s' media: %r", seq, self._seq_media)
+
+    def _has_audio(self, status: dict) -> bool:
+        """True when the playing item has audio, on a master or a remote.
+
+        A master reports current_song for media.  A remote reports it only when
+        the media file is on the remote too, so also trust the FSEQ's mf header.
+        If the header could not be read, assume audio (the pre-#16 behaviour).
+        """
+        if (status.get("current_song") or "").strip():
+            return True
+        return self._seq_media is None or bool(self._seq_media)
+
     def _is_playing(self, status: dict) -> bool:
-        return status.get("status", 0) == 1
+        if status.get("status", 0) != 1:
+            return False
+        # FPP names the gap between playlist items "Global Pause"; nothing is playing
+        if (status.get("current_sequence") or "") == "Global Pause" and not status.get("current_song"):
+            return False
+        if self._global().get("sequence_only", "idle") == "media":
+            return True
+        return self._has_audio(status)
 
     def poll_once(self):
         if not self._global().get("enable_output", True):
@@ -618,13 +663,15 @@ class MatrixScrollerDaemon:
 
         now = time.monotonic()  # captured after network calls to avoid overstating no-media elapsed
 
+        self._update_seq_media(host, status)
         playing  = self._is_playing(status)
         song_key = self._get_current_song_key(status) if playing else ""
 
         # When the song changes, fetch richer file-level tags from FPP's ffprobe endpoint.
         # status.mediameta is often empty; /api/media/{file}/meta has full ID3/vorbis tags.
+        # An FSEQ has no tags to probe, so only a real media file is looked up.
         if playing and song_key and song_key != self._media_meta_key:
-            filename = (status.get("current_song") or status.get("current_sequence") or "").strip()
+            filename = (status.get("current_song") or "").strip()
             if filename:
                 tags = get_fpp_media_meta(host, os.path.basename(unquote(filename)))
                 self._media_meta = tags

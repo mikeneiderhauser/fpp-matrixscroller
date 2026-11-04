@@ -75,6 +75,13 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
           <label class="form-label form-label-sm">Media Idle Timeout (s)</label>
           <input type="number" id="g_no_media_timeout" class="form-control form-control-sm" value="5" step="1" min="1">
         </div>
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label form-label-sm" for="g_sequence_only" title="An FSEQ whose xLights header names no audio file, e.g. an animation between songs">Sequence Without Audio</label>
+          <select id="g_sequence_only" class="form-select form-select-sm">
+            <option value="idle">Show Media Idle message</option>
+            <option value="media">Show as Media (sequence name)</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -413,6 +420,7 @@ function applyGlobalToUI() {
   document.getElementById('g_fpp_host').value          = g.fpp_host          || 'localhost';
   document.getElementById('g_poll_interval').value     = g.poll_interval      || 1;
   document.getElementById('g_no_media_timeout').value  = g.no_media_timeout   || 5;
+  document.getElementById('g_sequence_only').value     = g.sequence_only === 'media' ? 'media' : 'idle';
 }
 
 function collectGlobalFromUI() {
@@ -421,6 +429,7 @@ function collectGlobalFromUI() {
     fpp_host:         document.getElementById('g_fpp_host').value.trim(),
     poll_interval:    parseFloat(document.getElementById('g_poll_interval').value)    || 1,
     no_media_timeout: parseFloat(document.getElementById('g_no_media_timeout').value) || 5,
+    sequence_only:    document.getElementById('g_sequence_only').value,
   };
 }
 

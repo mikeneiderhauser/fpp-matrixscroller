@@ -161,6 +161,28 @@ Only enabled fields are included. The Gap text is inserted between each present 
 
 When no media has been playing for longer than `no_media_timeout` seconds (or the current scroll effect finishes, whichever comes first), the no-media message fields are used.
 
+### Sequences without audio
+
+A sequence counts as having audio when FPP reports a media file for it, or when the FSEQ's xLights header (`mf`) names the audio it was built against. Animation-only sequences have neither.
+
+The global `sequence_only` setting (**Sequence Without Audio** in the UI) decides what those show:
+
+| Value | Animation-only sequence shows |
+|-------|-------------------------------|
+| `idle` (default) | The Media Idle message, after `no_media_timeout` |
+| `media` | The media message, using the sequence name as the title |
+
+> **Behaviour change:** before this setting existed, every sequence was treated as media, so an animation scrolled its FSEQ filename as if it were a song. Set `sequence_only` to `media` to keep that.
+
+A playlist's Global Pause between items always shows the Media Idle message.
+
+### Running on a multisync remote
+
+A remote only knows a song's media file when that file is on the remote as well. Without it the plugin still detects the song from the FSEQ header, but has no ID3 tags to read, so the title falls back to the audio file's name from the FSEQ header (e.g. `Winter Wonderland - Selena Gomez`). If that name isn't what you want on the matrix, either:
+
+- **Upload the MP3s to the remote too** (same filenames as the master), so the artist and title come from their tags, the same as on the master. Note the remote will then play that audio in sync as well; set its volume however suits your show.
+- **Add a song override** with the artist and title to show.
+
 ## Config Structure
 
 ```json
@@ -170,7 +192,8 @@ When no media has been playing for longer than `no_media_timeout` seconds (or th
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
-    "no_media_timeout": 5.0
+    "no_media_timeout": 5.0,
+    "sequence_only": "idle"
   },
   "panels": [
     {
