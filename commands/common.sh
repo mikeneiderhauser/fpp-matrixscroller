@@ -1,15 +1,20 @@
 #!/bin/bash
 # Shared by the FPP command scripts (sourced, not run). fppd runs a command
-# script with only MEDIADIR/FPPDIR/SCRIPTDIR set and waits for it to finish,
-# so set PATH and keep every request short.
+# script with only MEDIADIR/FPPDIR/SCRIPTDIR set and waits for it to finish -
+# with the scheduler, MultiSync and other commands waiting too - so set PATH
+# and keep every request short.
+#
+# Requests go straight to the plugin's own daemon on 127.0.0.1, not through
+# FPP's web server: a stopped daemon then fails at once, and the worst case
+# (a daemon that accepts but never answers) is the 2 s --max-time below.
 
 export PATH=/usr/local/bin:/usr/bin:/bin
 
-MS_API="http://localhost/api/plugin/fpp-matrixscroller"
+MS_API="http://127.0.0.1:32329/api/plugin/matrixscroller"
 
 # ms_post <endpoint> <json body>
 ms_post() {
-    curl -sf --connect-timeout 3 --max-time 5 -X POST "$MS_API/$1" \
+    curl -sf --connect-timeout 1 --max-time 2 -X POST "$MS_API/$1" \
         -H 'Content-Type: application/json' -d "$2" \
         || { echo "matrixscroller: $1 request failed" >&2; return 1; }
 }
