@@ -293,6 +293,22 @@ Returns the list of music files available in FPP.
 
 ---
 
+### `GET /sequences`
+
+Returns the list of sequence (FSEQ) files available in FPP, for song/sequence override keys.
+
+**Response**
+```json
+{
+  "files": [
+    { "name": "MySong.fseq" },
+    { "name": "Intermission.fseq" }
+  ]
+}
+```
+
+---
+
 ## Daemon Control
 
 ### `GET /daemon/start`

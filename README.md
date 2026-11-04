@@ -8,7 +8,7 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 - **Two modes per panel** — Media Playing and Media Idle (with configurable timeout)
 - **Configurable message fields** — Pre-Roll, Tune To, Song Info, Post-Roll, Gap separator; each independently enabled per mode
 - **Song info order** — Title · Artist · Album, joined with ` - `; each field individually enabled
-- **Per-song overrides** — override color, font, direction, speed, and artist/title/album text for specific songs; or suppress the overlay entirely for a song
+- **Song and sequence overrides** — override color, font, direction, speed, and artist/title/album text for a specific song or FSEQ sequence; or suppress the overlay entirely for one
 - **Repeat delay** — configurable per-panel pause between scroll repetitions (default 0 s)
 - **Immediate media transitions** — stops the current effect and restarts immediately when the song changes; switches to no-media as soon as the current effect finishes rather than leaving the matrix dark
 - **Enable Output toggle** — suppress all overlay effects without stopping the daemon
@@ -65,7 +65,7 @@ Open the plugin page in FPP's web interface. The UI includes:
 
 - **FPP Status Bar** — current song, progress bar, and embedded ID3 tags
 - **Panel Status** — live mode badge, active message, and manual message override per panel
-- **Panels** — full per-panel config including display settings, message fields, and per-song overrides
+- **Panels** — full per-panel config including display settings, message fields, and song/sequence overrides
 - **Global Settings** — FPP host, poll interval, media idle timeout, Enable Output toggle
 - **Daemon Control** — Start / Restart / Stop with live Online/Offline badge
 - **Config Snapshots** — save a named snapshot (timestamp pre-filled), download the current config as JSON, upload a JSON file to restore, or select a previous snapshot and restore it
@@ -89,6 +89,7 @@ http://<fpp-ip>/api/plugin/fpp-matrixscroller/<endpoint>
 | GET | `models` | Available FPP pixel overlay models |
 | GET | `fonts` | Available fonts detected on disk |
 | GET | `music` | Music files available in FPP |
+| GET | `sequences` | Sequence (FSEQ) files available in FPP |
 | GET | `version` | Current git commit hash of the deployed plugin |
 | POST | `message` | Send a manual text override to a panel |
 | POST | `message/all` | Send a manual text override to all panels |
@@ -174,14 +175,26 @@ The global `sequence_only` setting (**Sequence Without Audio** in the UI) decide
 
 > **Behaviour change:** before this setting existed, every sequence was treated as media, so an animation scrolled its FSEQ filename as if it were a song. Set `sequence_only` to `media` to keep that.
 
-A playlist's Global Pause between items always shows the Media Idle message.
+A playlist's Global Pause between items always shows the Media Idle message. To show something during a particular animation instead, give it a sequence override (below).
 
 ### Running on a multisync remote
 
 A remote only knows a song's media file when that file is on the remote as well. Without it the plugin still detects the song from the FSEQ header, but has no ID3 tags to read, so the title falls back to the audio file's name from the FSEQ header (e.g. `Winter Wonderland - Selena Gomez`). If that name isn't what you want on the matrix, either:
 
 - **Upload the MP3s to the remote too** (same filenames as the master), so the artist and title come from their tags, the same as on the master. Note the remote will then play that audio in sync as well; set its volume however suits your show.
-- **Add a song override** with the artist and title to show.
+- **Add an override** with the artist and title to show. An override keyed by the MP3 applies on the remote too, matched through the FSEQ header, so the same config works on master and remotes.
+
+### Song and sequence overrides
+
+Each panel's `song_overrides` is keyed by a filename: a media file (`Jingle Bell Rock - Glee.mp3`) or a sequence (`TuneToPixel2.fseq`). The UI lists both. When something plays, the plugin looks for an override in this order and uses the first it finds:
+
+1. The sequence (FSEQ) name
+2. The media file FPP reports
+3. The audio name from the FSEQ's `mf` header
+
+Each step tries the exact filename first, then the name without its extension, case-insensitive. So a sequence override wins over a media override for the same song, and an override keyed by the MP3 still applies on a remote that only has the FSEQ.
+
+A sequence override also makes a sequence without audio display as media on that panel, even with `sequence_only` set to `idle`. It shows the override's artist/title (or the sequence name) with its colour, font and direction; unchecking **Play overlay** blanks the panel for that sequence instead. Animations without an override keep showing the Media Idle message.
 
 ## Config Structure
 

@@ -23,6 +23,7 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'GET',  'endpoint' => 'version',        'callback' => 'fppmatrixscrollerVersion'),
         array('method' => 'GET',  'endpoint' => 'fonts',          'callback' => 'fppmatrixscrollerFonts'),
         array('method' => 'GET',  'endpoint' => 'music',          'callback' => 'fppmatrixscrollerMusic'),
+        array('method' => 'GET',  'endpoint' => 'sequences',      'callback' => 'fppmatrixscrollerSequences'),
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
         array('method' => 'POST', 'endpoint' => 'daemon/stop',    'callback' => 'fppmatrixscrollerDaemonStop'),
         array('method' => 'POST', 'endpoint' => 'daemon/restart', 'callback' => 'fppmatrixscrollerDaemonRestart'),
@@ -77,6 +78,13 @@ function fppmatrixscrollerFonts() {
 
 function fppmatrixscrollerMusic() {
     $resp = @file_get_contents('http://localhost/api/files/music');
+    if ($resp === false) return json(array('files' => array()));
+    $data = json_decode($resp, true);
+    return json($data ?: array('files' => array()));
+}
+
+function fppmatrixscrollerSequences() {
+    $resp = @file_get_contents('http://localhost/api/files/sequences');
     if ($resp === false) return json(array('files' => array()));
     $data = json_decode($resp, true);
     return json($data ?: array('files' => array()));

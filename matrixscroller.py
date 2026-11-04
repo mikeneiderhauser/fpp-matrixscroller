@@ -348,6 +348,27 @@ class PanelController:
                 return v
         return {}
 
+    def match_override_key(self, candidates: List[str]) -> str:
+        """Return the song_overrides key for the first candidate filename that has one.
+
+        Candidates run most specific first (sequence, media, mf audio name). Each
+        prefers an exact filename match, then a match ignoring extension, so an
+        override keyed by an MP3 also applies on a remote that only knows the FSEQ.
+        """
+        overrides_dict = self.cfg.get("song_overrides") or {}
+        if not isinstance(overrides_dict, dict) or not overrides_dict:
+            return ""
+        for cand in candidates:
+            name = cand.lower()
+            stem = os.path.splitext(cand)[0].lower()
+            for k in overrides_dict:
+                if k.lower() == name:
+                    return k
+            for k in overrides_dict:
+                if os.path.splitext(k)[0].lower() == stem or k.lower() == stem:
+                    return k
+        return ""
+
     def _build_effect_payload(self, message: str, overrides: dict = None) -> dict:
         """Build the REST payload for PUT /api/overlays/model/{name}/text."""
         cfg = self.cfg
@@ -634,15 +655,31 @@ class MatrixScrollerDaemon:
             return True
         return self._seq_media is None or bool(self._seq_media)
 
-    def _is_playing(self, status: dict) -> bool:
+    def _is_item_playing(self, status: dict) -> bool:
+        """True while a playlist item (sequence and/or media) is playing."""
         if status.get("status", 0) != 1:
             return False
         # FPP names the gap between playlist items "Global Pause"; nothing is playing
         if (status.get("current_sequence") or "") == "Global Pause" and not status.get("current_song"):
             return False
+        return True
+
+    def _is_playing(self, status: dict) -> bool:
+        """True when the playing item counts as media for every panel."""
+        if not self._is_item_playing(status):
+            return False
         if self._global().get("sequence_only", "idle") == "media":
             return True
         return self._has_audio(status)
+
+    def _override_candidates(self, status: dict) -> List[str]:
+        """Filenames a song_overrides key may name, most specific first."""
+        found = []
+        for val in (status.get("current_sequence"), status.get("current_song"), self._seq_media):
+            val = os.path.basename(unquote((val or "").strip()))
+            if val and val not in found:
+                found.append(val)
+        return found
 
     def poll_once(self):
         if not self._global().get("enable_output", True):
@@ -664,13 +701,15 @@ class MatrixScrollerDaemon:
         now = time.monotonic()  # captured after network calls to avoid overstating no-media elapsed
 
         self._update_seq_media(host, status)
+        item_playing = self._is_item_playing(status)
         playing  = self._is_playing(status)
-        song_key = self._get_current_song_key(status) if playing else ""
+        song_key = self._get_current_song_key(status) if item_playing else ""
+        candidates = self._override_candidates(status) if item_playing else []
 
         # When the song changes, fetch richer file-level tags from FPP's ffprobe endpoint.
         # status.mediameta is often empty; /api/media/{file}/meta has full ID3/vorbis tags.
         # An FSEQ has no tags to probe, so only a real media file is looked up.
-        if playing and song_key and song_key != self._media_meta_key:
+        if item_playing and song_key and song_key != self._media_meta_key:
             filename = (status.get("current_song") or "").strip()
             if filename:
                 tags = get_fpp_media_meta(host, os.path.basename(unquote(filename)))
@@ -680,14 +719,15 @@ class MatrixScrollerDaemon:
             else:
                 self._media_meta = {}
             self._media_meta_key = song_key
-        elif not playing:
+        elif not item_playing:
             self._media_meta = {}
             self._media_meta_key = ""
 
-        metadata = self._get_metadata(status, self._media_meta) if playing else {}
-        has_content = playing and bool(
+        metadata = self._get_metadata(status, self._media_meta) if item_playing else {}
+        has_metadata = bool(
             metadata.get("artist") or metadata.get("title") or metadata.get("fallback")
         )
+        has_content = playing and has_metadata
 
         if has_content:
             a, t = metadata.get("artist", ""), metadata.get("title", "")
@@ -709,17 +749,22 @@ class MatrixScrollerDaemon:
             media_enabled    = panel.cfg.get("media",    {}).get("enabled", True)
             no_media_enabled = panel.cfg.get("no_media", {}).get("enabled", True)
 
-            if has_content:
+            # An override naming this item makes it media for this panel, even a
+            # sequence without audio that sequence_only would otherwise idle.
+            ov_key = panel.match_override_key(candidates) if candidates else ""
+            panel_key = ov_key or song_key
+
+            if has_content or (ov_key and has_metadata):
                 # Reset no-media timer
                 self._no_media_since[pid] = None
                 if media_enabled:
                     meta_for_panel = dict(metadata)
-                    so = panel._get_song_overrides(song_key) if song_key else {}
+                    so = panel._get_song_overrides(panel_key) if panel_key else {}
                     for field in ("artist", "title", "album"):
                         if so.get(field):
                             meta_for_panel[field] = _sanitize_text(so[field])
                     msg = build_message(panel.cfg, "media", meta_for_panel)
-                    panel.start(msg, "media", song_key)
+                    panel.start(msg, "media", panel_key)
                 else:
                     panel.stop()
             else:

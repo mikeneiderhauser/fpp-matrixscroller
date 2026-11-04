@@ -133,6 +133,7 @@ let config = { global: {}, panels: [] };
 let models = [];
 let fonts = [];
 let musicFiles = [];
+let sequenceFiles = [];
 let activePanelIdx = 0;
 const songOverridesLists = {};
 let daemonOnline = false;
@@ -340,11 +341,14 @@ async function loadFonts() {
   }
 }
 
+// Override keys can name media or a sequence, so this loads both lists
 async function loadMusic() {
-  try {
-    const data = await apiFetch('/music');
-    musicFiles = (data.files || []).map(f => f.name);
-  } catch(e) { musicFiles = []; }
+  const [music, seqs] = await Promise.all([
+    apiFetch('/music').catch(() => ({})),
+    apiFetch('/sequences').catch(() => ({})),
+  ]);
+  musicFiles    = ((music && music.files) || []).map(f => f.name);
+  sequenceFiles = ((seqs  && seqs.files)  || []).map(f => f.name);
 }
 
 function fontOptions(selected) {
@@ -354,11 +358,12 @@ function fontOptions(selected) {
 }
 
 function musicOptions(selected) {
-  const list = [...musicFiles];
-  if (selected && !list.includes(selected)) list.unshift(selected);
-  return ['', ...list].map(f =>
-    `<option value="${escHtml(f)}" ${f===(selected||'')?'selected':''}>${escHtml(f)||'-- Select Song --'}</option>`
-  ).join('');
+  const opt = f => `<option value="${escHtml(f)}" ${f===(selected||'')?'selected':''}>${escHtml(f)||'-- Select Song or Sequence --'}</option>`;
+  const group = (label, list) => list.length ? `<optgroup label="${label}">${list.map(opt).join('')}</optgroup>` : '';
+  // Keep a saved key selectable even when its file isn't on this FPP
+  const known = selected && (musicFiles.includes(selected) || sequenceFiles.includes(selected));
+  return opt('') + (selected && !known ? opt(selected) : '') +
+    group('Media', musicFiles) + group('Sequences', sequenceFiles);
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -570,10 +575,10 @@ function renderPanel(panelIdx, pcfg) {
       </div>
     </div>
 
-    <div class="ms-section-lbl">Per-Song Overrides</div>
-    <p class="text-muted small mb-2">Override display params for a specific song. Select from the dropdown or type a custom filename key.</p>
+    <div class="ms-section-lbl">Song / Sequence Overrides</div>
+    <p class="text-muted small mb-2">Override display params for a specific song (media file) or sequence (FSEQ). A sequence override wins over a media one, and also shows a sequence without audio as media.</p>
     <div id="p${panelIdx}_so_list"></div>
-    <button class="btn btn-sm btn-outline-secondary" onclick="addSongOverride(${panelIdx})">+ Add Song Override</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="addSongOverride(${panelIdx})">+ Add Override</button>
   </div>`;
 }
 
@@ -746,13 +751,13 @@ function renderSongOverrideRow(panelIdx, i, ov) {
     <div class="card-body p-2">
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
       <div class="flex-grow-1" style="min-width:180px;">
-        <label class="form-label form-label-sm mb-1">Song (MP3 filename)</label>
+        <label class="form-label form-label-sm mb-1">Song or Sequence</label>
         <select id="${pfx}_key" class="form-select form-select-sm">${musicOptions(ov.key||'')}</select>
       </div>
       <div class="d-flex align-items-center gap-3 mt-3 flex-shrink-0">
         <div class="d-flex align-items-center gap-2">
           <input type="checkbox" class="form-check-input flex-shrink-0 mt-0" id="${pfx}_enabled" style="width:1em;height:1em;" ${ov.enabled!==false?'checked':''}>
-          <label class="mb-0 small" for="${pfx}_enabled" title="Uncheck to suppress the overlay for this song">Play overlay</label>
+          <label class="mb-0 small" for="${pfx}_enabled" title="Uncheck to suppress the overlay for this song or sequence">Play overlay</label>
         </div>
         <button class="btn btn-sm btn-outline-danger" onclick="removeSongOverride(${panelIdx},${i})">&#10005;</button>
       </div>
@@ -813,7 +818,7 @@ function renderSongOverrides(panelIdx) {
   if (!container) return;
   const list = songOverridesLists[panelIdx] || [];
   container.innerHTML = list.length === 0
-    ? '<p class="text-muted small mb-2">No song overrides configured.</p>'
+    ? '<p class="text-muted small mb-2">No song or sequence overrides configured.</p>'
     : list.map((ov,i) => renderSongOverrideRow(panelIdx,i,ov)).join('');
 }
 
