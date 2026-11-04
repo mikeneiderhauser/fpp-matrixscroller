@@ -2,7 +2,7 @@
 .ms-panel-sec  { display:none; }
 .ms-panel-sec.active { display:block; }
 .ms-mode-cols  { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-.ms-so-fields  { display:grid; grid-template-columns:8rem 1fr 90px 1fr 90px; gap:8px; align-items:end; }
+.ms-so-fields  { display:grid; grid-template-columns:8rem 1fr 6rem 1fr 6rem; gap:0.5rem; align-items:end; }
 .ms-section-lbl { font-size:0.78em; color:var(--bs-secondary); text-transform:uppercase; letter-spacing:0.07em; font-weight:600; margin:14px 0 6px; }
 @media (max-width:768px) { .ms-mode-cols,.ms-so-fields { grid-template-columns:1fr; } }
 select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; line-height: 1.5; }
@@ -24,7 +24,7 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
       <strong>Panel Status</strong>
       <div class="d-flex align-items-center gap-2 flex-wrap">
         <label class="form-label form-label-sm mb-0 text-muted small" for="previewRate">Preview rate (ms)</label>
-        <input type="number" id="previewRate" class="form-control form-control-sm" style="width:72px;" value="100" min="50" max="5000" step="50" onchange="updatePreviewRate()">
+        <input type="number" id="previewRate" class="form-control form-control-sm" style="width:4.5rem;" value="100" min="50" max="5000" step="50" onchange="updatePreviewRate()">
         <button id="btn-preview-toggle" class="btn btn-sm btn-outline-secondary" onclick="togglePreview()">&#9654; Preview</button>
         <button class="btn btn-sm btn-outline-secondary" onclick="loadStatus()">&#8635; Refresh</button>
       </div>
@@ -75,6 +75,13 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
           <label class="form-label form-label-sm">Media Idle Timeout (s)</label>
           <input type="number" id="g_no_media_timeout" class="form-control form-control-sm" value="5" step="1" min="1">
         </div>
+        <div class="col-sm-6 col-md-3">
+          <label class="form-label form-label-sm" for="g_sequence_only" title="An FSEQ whose xLights header names no audio file, e.g. an animation between songs">Sequence Without Audio</label>
+          <select id="g_sequence_only" class="form-select form-select-sm">
+            <option value="idle">Show Media Idle message</option>
+            <option value="media">Show as Media (sequence name)</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
@@ -118,7 +125,7 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
 </div>
 
 <!-- Toast -->
-<div id="ms-toast" class="alert position-fixed bottom-0 end-0 m-3 d-none" role="alert" style="z-index:9999;min-width:220px;"></div>
+<div id="ms-toast" class="alert position-fixed bottom-0 end-0 m-3 d-none" role="alert" style="z-index:9999;min-width:14rem;"></div>
 
 <script>
 const API = '/api/plugin/fpp-matrixscroller';
@@ -126,6 +133,7 @@ let config = { global: {}, panels: [] };
 let models = [];
 let fonts = [];
 let musicFiles = [];
+let sequenceFiles = [];
 let activePanelIdx = 0;
 const songOverridesLists = {};
 let daemonOnline = false;
@@ -133,6 +141,11 @@ let daemonOnline = false;
 // ── Toast ─────────────────────────────────────────────────────────────────────
 let _toastTimer = null;
 function showToast(msg, isError = false) {
+  // FPP's own toasts inside the FPP UI; the fallback covers the page opened on its own
+  if (window.jQuery && jQuery.jGrowl) {
+    jQuery.jGrowl(msg, { themeState: isError ? 'danger' : 'success' });
+    return;
+  }
   const t = document.getElementById('ms-toast');
   t.textContent = msg;
   t.className = 'alert position-fixed bottom-0 end-0 m-3' + (isError ? ' alert-danger' : ' alert-success');
@@ -176,8 +189,8 @@ async function loadFppStatus() {
       const tRemaining = escHtml(s.time_remaining || fmtSec(remaining));
       const song = escHtml(s.current_song || s.current_sequence || '—');
       html = `<span class="badge bg-success">&#9654; Playing</span>
-        <span class="fw-semibold text-truncate flex-grow-1" style="max-width:360px;" title="${song}">${song}</span>
-        <div class="progress flex-grow-1" style="height:6px;max-width:160px;" title="${pct}%">
+        <span class="fw-semibold text-truncate flex-grow-1" style="max-width:22rem;" title="${song}">${song}</span>
+        <div class="progress flex-grow-1" style="height:0.375rem;max-width:10rem;" title="${pct}%">
           <div class="progress-bar" style="width:${pct}%"></div>
         </div>
         <span class="text-muted small text-nowrap">${tElapsed}&thinsp;/&thinsp;${tTotal}&thinsp;(${tRemaining})</span>
@@ -240,7 +253,7 @@ async function loadStatus() {
       const badgeCls = p.mode === 'media' ? 'bg-success' : p.mode === 'no_media' ? 'bg-warning text-dark' : 'bg-secondary';
       const modeLabel = p.mode === 'media' ? 'Media Playing' : p.mode === 'no_media' ? 'Media Idle' : p.mode || 'Stopped';
       const color = p.color || '';
-      const swatch = color ? `<span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:${escHtml(color)};border:1px solid rgba(128,128,128,.3);flex-shrink:0;"></span>` : '';
+      const swatch = color ? `<span style="display:inline-block;width:0.75rem;height:0.75rem;border-radius:2px;background:${escHtml(color)};border:1px solid var(--bs-border-color);flex-shrink:0;"></span>` : '';
       return `<div class="col-md-6 col-lg-4">
         <div class="card h-100">
           <div class="card-body p-2">
@@ -263,7 +276,7 @@ async function loadStatus() {
                   <span style="font-size:0.7em;text-transform:uppercase;letter-spacing:.05em;color:var(--bs-secondary);">Live Preview</span>
                   <span id="previewbtn_${escHtml(p.id)}" style="font-size:0.75em;">${collapsed ? '&#9654;' : '&#9660;'}</span>
                 </div>
-                <canvas id="preview_${escHtml(p.id)}" class="ms-panel-preview d-block mt-1" style="background:#111;image-rendering:pixelated;max-width:100%;${previewEnabled && !collapsed ? '' : 'display:none;'}"></canvas>
+                <canvas id="preview_${escHtml(p.id)}" class="ms-panel-preview d-block mt-1 bg-black" style="image-rendering:pixelated;max-width:100%;${previewEnabled && !collapsed ? '' : 'display:none;'}"></canvas>
               </div>`;
             })() : ''}
           </div>
@@ -333,11 +346,14 @@ async function loadFonts() {
   }
 }
 
+// Override keys can name media or a sequence, so this loads both lists
 async function loadMusic() {
-  try {
-    const data = await apiFetch('/music');
-    musicFiles = (data.files || []).map(f => f.name);
-  } catch(e) { musicFiles = []; }
+  const [music, seqs] = await Promise.all([
+    apiFetch('/music').catch(() => ({})),
+    apiFetch('/sequences').catch(() => ({})),
+  ]);
+  musicFiles    = ((music && music.files) || []).map(f => f.name);
+  sequenceFiles = ((seqs  && seqs.files)  || []).map(f => f.name);
 }
 
 function fontOptions(selected) {
@@ -347,11 +363,12 @@ function fontOptions(selected) {
 }
 
 function musicOptions(selected) {
-  const list = [...musicFiles];
-  if (selected && !list.includes(selected)) list.unshift(selected);
-  return ['', ...list].map(f =>
-    `<option value="${escHtml(f)}" ${f===(selected||'')?'selected':''}>${escHtml(f)||'-- Select Song --'}</option>`
-  ).join('');
+  const opt = f => `<option value="${escHtml(f)}" ${f===(selected||'')?'selected':''}>${escHtml(f)||'-- Select Song or Sequence --'}</option>`;
+  const group = (label, list) => list.length ? `<optgroup label="${label}">${list.map(opt).join('')}</optgroup>` : '';
+  // Keep a saved key selectable even when its file isn't on this FPP
+  const known = selected && (musicFiles.includes(selected) || sequenceFiles.includes(selected));
+  return opt('') + (selected && !known ? opt(selected) : '') +
+    group('Media', musicFiles) + group('Sequences', sequenceFiles);
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -413,6 +430,7 @@ function applyGlobalToUI() {
   document.getElementById('g_fpp_host').value          = g.fpp_host          || 'localhost';
   document.getElementById('g_poll_interval').value     = g.poll_interval      || 1;
   document.getElementById('g_no_media_timeout').value  = g.no_media_timeout   || 5;
+  document.getElementById('g_sequence_only').value     = g.sequence_only === 'media' ? 'media' : 'idle';
 }
 
 function collectGlobalFromUI() {
@@ -421,6 +439,7 @@ function collectGlobalFromUI() {
     fpp_host:         document.getElementById('g_fpp_host').value.trim(),
     poll_interval:    parseFloat(document.getElementById('g_poll_interval').value)    || 1,
     no_media_timeout: parseFloat(document.getElementById('g_no_media_timeout').value) || 5,
+    sequence_only:    document.getElementById('g_sequence_only').value,
   };
 }
 
@@ -561,10 +580,10 @@ function renderPanel(panelIdx, pcfg) {
       </div>
     </div>
 
-    <div class="ms-section-lbl">Per-Song Overrides</div>
-    <p class="text-muted small mb-2">Override display params for a specific song. Select from the dropdown or type a custom filename key.</p>
+    <div class="ms-section-lbl">Song / Sequence Overrides</div>
+    <p class="text-muted small mb-2">Override display params for a specific song (media file) or sequence (FSEQ). A sequence override wins over a media one, and also shows a sequence without audio as media.</p>
     <div id="p${panelIdx}_so_list"></div>
-    <button class="btn btn-sm btn-outline-secondary" onclick="addSongOverride(${panelIdx})">+ Add Song Override</button>
+    <button class="btn btn-sm btn-outline-secondary" onclick="addSongOverride(${panelIdx})">+ Add Override</button>
   </div>`;
 }
 
@@ -736,14 +755,14 @@ function renderSongOverrideRow(panelIdx, i, ov) {
   return `<div class="card mb-2">
     <div class="card-body p-2">
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
-      <div class="flex-grow-1" style="min-width:180px;">
-        <label class="form-label form-label-sm mb-1">Song (MP3 filename)</label>
+      <div class="flex-grow-1" style="min-width:11rem;">
+        <label class="form-label form-label-sm mb-1">Song or Sequence</label>
         <select id="${pfx}_key" class="form-select form-select-sm">${musicOptions(ov.key||'')}</select>
       </div>
       <div class="d-flex align-items-center gap-3 mt-3 flex-shrink-0">
         <div class="d-flex align-items-center gap-2">
           <input type="checkbox" class="form-check-input flex-shrink-0 mt-0" id="${pfx}_enabled" style="width:1em;height:1em;" ${ov.enabled!==false?'checked':''}>
-          <label class="mb-0 small" for="${pfx}_enabled" title="Uncheck to suppress the overlay for this song">Play overlay</label>
+          <label class="mb-0 small" for="${pfx}_enabled" title="Uncheck to suppress the overlay for this song or sequence">Play overlay</label>
         </div>
         <button class="btn btn-sm btn-outline-danger" onclick="removeSongOverride(${panelIdx},${i})">&#10005;</button>
       </div>
@@ -804,7 +823,7 @@ function renderSongOverrides(panelIdx) {
   if (!container) return;
   const list = songOverridesLists[panelIdx] || [];
   container.innerHTML = list.length === 0
-    ? '<p class="text-muted small mb-2">No song overrides configured.</p>'
+    ? '<p class="text-muted small mb-2">No song or sequence overrides configured.</p>'
     : list.map((ov,i) => renderSongOverrideRow(panelIdx,i,ov)).join('');
 }
 

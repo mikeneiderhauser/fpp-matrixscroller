@@ -48,12 +48,14 @@ Returns the current running state of the daemon and all configured panels.
 }
 ```
 
+A panel's `song_key` is the `song_overrides` key in use (e.g. `TuneToPixel2.fseq`) when an override matches what is playing; otherwise, in `media` mode, it is the playing media or sequence name without its extension, and `""` in any other mode.
+
 **Panel `mode` values**
 
 | Value | Meaning |
 |-------|---------|
 | `media` | Media is playing, song info is scrolling |
-| `no_media` | No media for longer than `no_media_timeout` seconds |
+| `no_media` | No media (or only a sequence without audio, when `sequence_only` is `idle`) for longer than `no_media_timeout` seconds |
 | `override` | A manual message override is active |
 | `""` | Panel stopped / daemon just started |
 
@@ -73,7 +75,8 @@ Returns the full active configuration.
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
-    "no_media_timeout": 5.0
+    "no_media_timeout": 5.0,
+    "sequence_only": "idle"
   },
   "panels": [
     {
@@ -292,6 +295,22 @@ Returns the list of music files available in FPP.
 
 ---
 
+### `GET /sequences`
+
+Returns the list of sequence (FSEQ) files available in FPP, for song/sequence override keys.
+
+**Response**
+```json
+{
+  "files": [
+    { "name": "MySong.fseq" },
+    { "name": "Intermission.fseq" }
+  ]
+}
+```
+
+---
+
 ## Daemon Control
 
 ### `GET /daemon/start`
@@ -335,9 +354,9 @@ Stop the daemon gracefully (`SIGTERM`). The HTTP response is sent before shutdow
 
 ## Config Backup & Restore
 
-Backup files are stored alongside the active config:
+Backup files are stored in the plugin's data folder:
 ```
-/home/fpp/media/config/plugin.fpp-matrixscroller.backup.YYYYMMDD-HHMMSS.json
+/home/fpp/media/plugindata/fpp-matrixscroller/backups/plugin.fpp-matrixscroller.backup.YYYYMMDD-HHMMSS.json
 ```
 
 ### `GET /backups`

@@ -1,27 +1,28 @@
 # fpp-matrixscroller
 
-FPP plugin that reads MP3 metadata from the currently playing sequence and scrolls it across one or more pixel matrix panels using FPP's native Overlay Model Effect API.
+FPP plugin that scrolls the playing song's title and artist (from its MP3 tags), or your own text, across one or more pixel matrix panels using FPP's native Overlay Model Effect API. Between songs, and during sequences without audio, it shows a configurable idle message.
 
 ## Features
 
 - **N matrix panels** — each with fully independent configuration
 - **Two modes per panel** — Media Playing and Media Idle (with configurable timeout)
+- **Sequences without audio** — animation-only FSEQs show the Media Idle message by default, detected from the FSEQ's xLights header; works on a multisync remote too
 - **Configurable message fields** — Pre-Roll, Tune To, Song Info, Post-Roll, Gap separator; each independently enabled per mode
 - **Song info order** — Title · Artist · Album, joined with ` - `; each field individually enabled
-- **Per-song overrides** — override color, font, direction, speed, and artist/title/album text for specific songs; or suppress the overlay entirely for a song
+- **Song and sequence overrides** — override color, font, direction, speed, and artist/title/album text for a specific song or FSEQ sequence; or suppress the overlay entirely for one
 - **Repeat delay** — configurable per-panel pause between scroll repetitions (default 0 s)
 - **Immediate media transitions** — stops the current effect and restarts immediately when the song changes; switches to no-media as soon as the current effect finishes rather than leaving the matrix dark
 - **Enable Output toggle** — suppress all overlay effects without stopping the daemon
 - **Daemon controls** — Start, Stop, and Restart the daemon from the web UI
 - **Config Snapshots** — save named snapshots (pre-filled with a timestamp), download/upload config as JSON, restore from any saved snapshot
 - **REST API** — get/set config, status, manual message overrides, version info (useful for Home Assistant automations)
-- **Autostart** — starts automatically on install and on every FPP daemon start via `plugin_event.sh`
+- **Autostart** — starts automatically on install and on every FPP daemon start (`scripts/postStart.sh`), and stops with it (`scripts/preStop.sh`)
 - **Web UI** — configure all panels from the FPP plugin page; honors FPP's dark/light mode setting; git commit shown in page footer
 - **Log level integration** — respects FPP's **Settings → Logs → Plugin** log level; set to `Debug` for verbose output, `Info` for quiet operation
 
 ## Requirements
 
-- FPP 8.0+ (primarily tested on FPP 10)
+- FPP 9.0+ (primarily tested on FPP 10)
 - Python 3.7+
 - One or more Pixel Overlay models configured in FPP
 
@@ -46,12 +47,18 @@ FPP plugin that reads MP3 metadata from the currently playing sequence and scrol
 ```bash
 cd /home/fpp/media/plugins
 git clone https://github.com/mikeneiderhauser/fpp-matrixscroller
-bash /home/fpp/media/plugins/fpp-matrixscroller/scripts/fpp_install.sh
+sudo bash /home/fpp/media/plugins/fpp-matrixscroller/scripts/fpp_install.sh
 ```
+
+Run the install script as root, as FPP does. Run as `fpp` it can't restart a daemon FPP already started, so it stops with an error rather than start a second one.
 
 ---
 
-In all cases, `fpp_install.sh` deploys the playlist scripts, creates the log and config directories, and starts the daemon. On subsequent boots FPP calls `plugin_event.sh fppd_start` to restart it automatically.
+In all cases, `fpp_install.sh` deploys the playlist scripts, creates the log and config directories, and starts the daemon. FPP then starts it on every fppd start (`scripts/postStart.sh`) and stops it before fppd stops (`scripts/preStop.sh`).
+
+### Uninstalling
+
+Uninstalling removes the playlist scripts, your settings and your snapshots. A **Reinstall** keeps settings and snapshots on FPP 10.4 and later; on FPP 10.3 and earlier it removes them too, so download a snapshot first if you want to keep it.
 
 Config is stored at:
 ```
@@ -65,8 +72,8 @@ Open the plugin page in FPP's web interface. The UI includes:
 
 - **FPP Status Bar** — current song, progress bar, and embedded ID3 tags
 - **Panel Status** — live mode badge, active message, and manual message override per panel
-- **Panels** — full per-panel config including display settings, message fields, and per-song overrides
-- **Global Settings** — FPP host, poll interval, media idle timeout, Enable Output toggle
+- **Panels** — full per-panel config including display settings, message fields, and song/sequence overrides
+- **Global Settings** — FPP host, poll interval, media idle timeout, Sequence Without Audio, Enable Output toggle
 - **Daemon Control** — Start / Restart / Stop with live Online/Offline badge
 - **Config Snapshots** — save a named snapshot (timestamp pre-filled), download the current config as JSON, upload a JSON file to restore, or select a previous snapshot and restore it
 
@@ -89,6 +96,7 @@ http://<fpp-ip>/api/plugin/fpp-matrixscroller/<endpoint>
 | GET | `models` | Available FPP pixel overlay models |
 | GET | `fonts` | Available fonts detected on disk |
 | GET | `music` | Music files available in FPP |
+| GET | `sequences` | Sequence (FSEQ) files available in FPP |
 | GET | `version` | Current git commit hash of the deployed plugin |
 | POST | `message` | Send a manual text override to a panel |
 | POST | `message/all` | Send a manual text override to all panels |
@@ -123,13 +131,15 @@ POST /api/plugin/fpp-matrixscroller/message
 
 ### Config Snapshots
 
-Snapshots are saved to `/home/fpp/media/config/` alongside the active config, named:
+Snapshots are saved to `/home/fpp/media/plugindata/fpp-matrixscroller/backups/` (older versions kept them beside the config; they are moved there on the next start), named:
 
 ```
 plugin.fpp-matrixscroller.backup.<name>.json
 ```
 
 Where `<name>` is the user-provided name (the UI pre-fills it with a timestamp like `20260101-120000`).
+
+> **Uninstalling removes your settings and snapshots.** A Reinstall keeps them on FPP 10.4 and later. On FPP 10.3 and earlier a Reinstall is a plain uninstall plus install and removes them too, so download a snapshot first if you want to keep it.
 
 Save a snapshot via API:
 
@@ -161,6 +171,40 @@ Only enabled fields are included. The Gap text is inserted between each present 
 
 When no media has been playing for longer than `no_media_timeout` seconds (or the current scroll effect finishes, whichever comes first), the no-media message fields are used.
 
+### Sequences without audio
+
+A sequence counts as having audio when FPP reports a media file for it, or when the FSEQ's xLights header (`mf`) names the audio it was built against. Animation-only sequences have neither.
+
+The global `sequence_only` setting (**Sequence Without Audio** in the UI) decides what those show:
+
+| Value | Animation-only sequence shows |
+|-------|-------------------------------|
+| `idle` (default) | The Media Idle message, after `no_media_timeout` |
+| `media` | The media message, using the sequence name as the title |
+
+> **Behaviour change:** before this setting existed, every sequence was treated as media, so an animation scrolled its FSEQ filename as if it were a song. Set `sequence_only` to `media` to keep that.
+
+A playlist's Global Pause between items always shows the Media Idle message. To show something during a particular animation instead, give it a sequence override (below).
+
+### Running on a multisync remote
+
+A remote only knows a song's media file when that file is on the remote as well. Without it the plugin still detects the song from the FSEQ header, but has no ID3 tags to read, so the title falls back to the audio file's name from the FSEQ header (e.g. `Winter Wonderland - Selena Gomez`). If that name isn't what you want on the matrix, either:
+
+- **Upload the MP3s to the remote too** (same filenames as the master), so the artist and title come from their tags, the same as on the master. Note the remote will then play that audio in sync as well; set its volume however suits your show.
+- **Add an override** with the artist and title to show. An override keyed by the MP3 applies on the remote too, matched through the FSEQ header, so the same config works on master and remotes.
+
+### Song and sequence overrides
+
+Each panel's `song_overrides` is keyed by a filename: a media file (`Jingle Bell Rock - Glee.mp3`) or a sequence (`TuneToPixel2.fseq`). The UI lists both. When something plays, the plugin looks for an override in this order and uses the first it finds:
+
+1. The sequence (FSEQ) name
+2. The media file FPP reports
+3. The audio name from the FSEQ's `mf` header
+
+Each step tries the exact filename first, then the name without its extension, case-insensitive. So a sequence override wins over a media override for the same song, and an override keyed by the MP3 still applies on a remote that only has the FSEQ.
+
+A sequence override also makes a sequence without audio display as media on that panel, even with `sequence_only` set to `idle`. It shows the override's artist/title (or the sequence name) with its colour, font and direction; unchecking **Play overlay** blanks the panel for that sequence instead. Animations without an override keep showing the Media Idle message.
+
 ## Config Structure
 
 ```json
@@ -170,7 +214,8 @@ When no media has been playing for longer than `no_media_timeout` seconds (or th
     "enable_output": true,
     "fpp_host": "localhost",
     "poll_interval": 1.0,
-    "no_media_timeout": 5.0
+    "no_media_timeout": 5.0,
+    "sequence_only": "idle"
   },
   "panels": [
     {
@@ -308,7 +353,7 @@ See [`home-assistant/README.md`](home-assistant/README.md) for setup instruction
 ## Logs
 
 ```bash
-tail -f /home/fpp/media/logs/fpp-matrixscroller.log
+tail -f /home/fpp/media/logs/plugin-fpp-matrixscroller.log
 ```
 
 Log verbosity is controlled by FPP's built-in log level setting at **FPP → Settings → Logs → Plugin**. Set to `Debug` to see per-panel effect sends and config reloads; leave at `Info` (default) to log only startup, shutdown, and user-triggered actions.

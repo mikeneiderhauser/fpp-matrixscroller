@@ -17,8 +17,8 @@ All files live in the [`home-assistant/`](../home-assistant/) directory of the p
 ### 1. Add secrets
 
 Copy the entries from `matrixscroller_secrets.yaml` into your HA `secrets.yaml`.
-Change `192.168.250.20` to your FPP device IP — this is the **only** place you need
-to update it.
+Change `YOUR_FPP_IP` to your FPP device IP. Apart from the dashboard's one URL
+(step 4 below), this is the only place you need to update it.
 
 ### 2. Enable packages (once, if not already done)
 
@@ -40,7 +40,7 @@ Copy `matrixscroller_package.yaml` into `config/packages/`.
 1. Open any HA dashboard → **Edit** (pencil icon) → **Add View** → give it a name → **Save**
 2. On the new empty view, click the **`< >`** (raw YAML) icon
 3. Replace all existing content with the contents of `dashboard.yaml`
-4. Before pasting, update the `weblink` URL to your FPP IP (the one `!secret` line that can't be resolved in the UI editor — it's marked with a `# ← change IP` comment)
+4. Before pasting, replace `YOUR_FPP_IP` in the **Matrix Scroller UI** button's URL with your FPP IP (the one `!secret` line that can't be resolved in the UI editor — it's marked with a `# ← change IP` comment)
 5. **Save**
 
 > The dashboard uses `type: masonry` layout — cards stack in a single column on mobile and two columns on wider screens. No custom cards or HACS components required.

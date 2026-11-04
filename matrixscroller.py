@@ -8,6 +8,7 @@ Exposes a REST API on port 32329 for config and status.
 
 import json
 import logging
+import logging.handlers
 import os
 import re
 import signal
@@ -23,10 +24,17 @@ from typing import Dict, List, Optional
 from urllib.parse import unquote, quote, parse_qs
 
 # ── Paths ────────────────────────────────────────────────────────────────────
+# FPP exports MEDIADIR/LOGDIR to the processes it launches; fall back to the
+# default install paths when run by hand.
 PLUGIN_DIR   = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH  = "/home/fpp/media/config/plugin.fpp-matrixscroller.json"
+MEDIA_DIR    = os.environ.get("MEDIADIR", "/home/fpp/media")
+LOG_DIR      = os.environ.get("LOGDIR", os.path.join(MEDIA_DIR, "logs"))
+CONFIG_PATH  = os.path.join(MEDIA_DIR, "config", "plugin.fpp-matrixscroller.json")
+BACKUP_DIR   = os.path.join(MEDIA_DIR, "plugindata", "fpp-matrixscroller", "backups")
 DEFAULT_CFG  = os.path.join(PLUGIN_DIR, "config.json")
-LOG_PATH     = "/home/fpp/media/logs/fpp-matrixscroller.log"
+# FPP rotates logs named plugin-<repoName>.log
+LOG_PATH     = os.path.join(LOG_DIR, "plugin-fpp-matrixscroller.log")
+_OLD_LOG_PATH = os.path.join(LOG_DIR, "fpp-matrixscroller.log")
 API_PORT     = 32329
 
 def _get_git_commit() -> str:
@@ -43,10 +51,27 @@ GIT_COMMIT = _get_git_commit()
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+# Before the plugin- prefix the log had no name FPP rotates; carry its history
+# over. The start scripts' stderr redirect has usually created the new log
+# already, so put the old lines in front of whatever it holds.
+if os.path.exists(_OLD_LOG_PATH):
+    try:
+        with open(_OLD_LOG_PATH, "rb") as f:
+            history = f.read()
+        current = b""
+        if os.path.exists(LOG_PATH):
+            with open(LOG_PATH, "rb") as f:
+                current = f.read()
+        with open(LOG_PATH, "wb") as f:
+            f.write(history + current)
+        os.remove(_OLD_LOG_PATH)
+    except OSError:
+        pass
+# WatchedFileHandler reopens the file after FPP's rotation renames it
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler(LOG_PATH)],
+    handlers=[logging.handlers.WatchedFileHandler(LOG_PATH)],
 )
 log = logging.getLogger("matrixscroller")
 
@@ -99,20 +124,36 @@ def _migrate_config(cfg: dict) -> bool:
     return migrated
 
 
-_FPP_SETTINGS_PATH = "/home/fpp/media/settings"
+_BACKUP_PREFIX = "plugin.fpp-matrixscroller.backup."
+
+def _migrate_snapshots():
+    """Move snapshots saved beside the config (before they had their own
+    plugindata folder) into BACKUP_DIR. Safe to run on every start."""
+    config_dir = os.path.dirname(CONFIG_PATH)
+    try:
+        old = [f for f in os.listdir(config_dir)
+               if f.startswith(_BACKUP_PREFIX) and f.endswith(".json")]
+    except OSError:
+        return
+    if not old:
+        return
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    for f in old:
+        dest = os.path.join(BACKUP_DIR, f)
+        if not os.path.exists(dest):
+            try:
+                os.replace(os.path.join(config_dir, f), dest)
+            except OSError as e:
+                log.error("Could not move snapshot %s: %s", f, e)
+    log.info("Moved %d snapshot(s) to %s", len(old), BACKUP_DIR)
+
 
 def apply_log_level():
     """Set Python log level from FPP's LogLevel_Plugin setting."""
-    level_str = "info"
-    try:
-        with open(_FPP_SETTINGS_PATH) as f:
-            for line in f:
-                if line.startswith("LogLevel_Plugin"):
-                    level_str = line.split("=", 1)[1].strip().strip('"').lower()
-                    break
-    except Exception:
-        pass
-    level = (logging.DEBUG    if level_str in ("debug", "excess") else
+    # Read through FPP's API, not its settings file (whose format is internal)
+    data = fpp_get("localhost", "/api/settings/LogLevel_Plugin")
+    level_str = str((data or {}).get("value") or "info").strip().lower()
+    level =(logging.DEBUG    if level_str in ("debug", "excess") else
              logging.WARNING  if level_str == "warn"  else
              logging.ERROR    if level_str == "error" else
              logging.INFO)
@@ -184,6 +225,7 @@ def fpp_put(host: str, path: str, payload: dict) -> bool:
 
 # Only .pfb Type1 fonts work with FPP 10's compiled fppd / GraphicsMagick.
 # TrueType (.ttf) files exist on disk but mapFont() silently fails to resolve them.
+# FPP's /api/overlays/fonts lists those too, so scan for .pfb files instead.
 _FONT_DIRS = [
     "/usr/share/fonts/X11/Type1/",
     "/usr/local/share/fonts/",
@@ -235,6 +277,17 @@ def get_fpp_media_meta(host: str, filename: str) -> dict:
         return data.get("format", {}).get("tags", {})
     return {}
 
+
+def get_fpp_sequence_media(host: str, sequence: str) -> Optional[str]:
+    """Return the media basename recorded in an FSEQ's 'mf' header, "" if it has
+    none (an animation-only sequence), or None if FPP could not be asked."""
+    name = os.path.splitext(os.path.basename(sequence))[0]
+    data = fpp_get(host, f"/api/sequence/{quote(name, safe='')}/meta", timeout=5.0)
+    if not isinstance(data, dict):
+        return None
+    mf = (data.get("variableHeaders", {}) or {}).get("mf", "") or ""
+    # xLights records the path on the machine that rendered it: / or \ separated
+    return re.split(r"[\\/]", mf.strip())[-1]
 
 
 # ── Text sanitisation ─────────────────────────────────────────────────────────
@@ -323,6 +376,7 @@ class PanelController:
         self._last_sent_at: float = 0.0   # used only for the 1-second startup guard
         self._effect_active: bool = False
         self._effect_done_at: float = 0.0  # monotonic time when effect completion was first detected
+        self._warned_no_model: bool = False  # warn once per config, not on every poll
 
     def _get_song_overrides(self, song_key: str) -> dict:
         """Return the song_overrides entry matching song_key (case-insensitive, extension-optional)."""
@@ -336,6 +390,27 @@ class PanelController:
             if os.path.splitext(k)[0].lower() == song_key_lower or k.lower() == song_key_lower:
                 return v
         return {}
+
+    def match_override_key(self, candidates: List[str]) -> str:
+        """Return the song_overrides key for the first candidate filename that has one.
+
+        Candidates run most specific first (sequence, media, mf audio name). Each
+        prefers an exact filename match, then a match ignoring extension, so an
+        override keyed by an MP3 also applies on a remote that only knows the FSEQ.
+        """
+        overrides_dict = self.cfg.get("song_overrides") or {}
+        if not isinstance(overrides_dict, dict) or not overrides_dict:
+            return ""
+        for cand in candidates:
+            name = cand.lower()
+            stem = os.path.splitext(cand)[0].lower()
+            for k in overrides_dict:
+                if k.lower() == name:
+                    return k
+            for k in overrides_dict:
+                if os.path.splitext(k)[0].lower() == stem or k.lower() == stem:
+                    return k
+        return ""
 
     def _build_effect_payload(self, message: str, overrides: dict = None) -> dict:
         """Build the REST payload for PUT /api/overlays/model/{name}/text."""
@@ -377,8 +452,14 @@ class PanelController:
         model = self.cfg.get("model", "")
         if not model:
             return
-        # Disable the model so FPP resets the TextMovementEffect state. Without
-        # this, re-sending text reuses stale x/y position and starts mid-scroll.
+        # Disabling the model alone leaves the running Text effect attached:
+        # FPP reuses it (stale x/y, so the next send starts mid-scroll), and an
+        # effect that finishes while the model is disabled waits forever for an
+        # output pass, reporting effectRunning=true so we never resend.
+        # Stop Effects drops it; the State PUT then cancels the deferred stop
+        # FPP queues on an enabled model and disables the model.
+        fpp_post_command(host, {"command": "Overlay Model Effect",
+                                "args": [model, "false", "Stop Effects"]})
         fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
     def start(self, message: str, mode: str, song_key: str = ""):
@@ -401,7 +482,9 @@ class PanelController:
 
             model = self.cfg.get("model", "")
             if not model:
-                log.warning("Panel '%s' has no model set, skipping", self.cfg.get("name"))
+                if not self._warned_no_model:
+                    log.warning("Panel '%s' has no model set, skipping", self.cfg.get("name"))
+                    self._warned_no_model = True
                 return
             if not message:
                 log.debug("Panel '%s' empty message, clearing", self.cfg.get("name"))
@@ -496,6 +579,7 @@ class PanelController:
     def update_cfg(self, panel_cfg: dict, global_cfg: dict = None):
         with self._lock:
             self.cfg = panel_cfg
+            self._warned_no_model = False
             if global_cfg is not None:
                 self.gcfg = global_cfg
             self._stop_effect()
@@ -518,6 +602,7 @@ class PanelController:
 class MatrixScrollerDaemon:
 
     def __init__(self):
+        _migrate_snapshots()
         self.config = load_config()
         apply_log_level()
         self.panels: Dict[str, PanelController] = {}
@@ -526,8 +611,11 @@ class MatrixScrollerDaemon:
         self._no_media_since: Dict[str, Optional[float]] = {}
         self._message_overrides: Dict[str, Optional[str]] = {}
         self._current_song = ""
+        self._output_enabled: Optional[bool] = None  # last seen enable_output, None until first poll
         self._media_meta: dict = {}               # format.tags for current song
         self._media_meta_key: str = ""            # song_key for which meta was fetched
+        self._seq_media: Optional[str] = None     # FSEQ 'mf' media basename for current sequence
+        self._seq_media_key: str = ""             # sequence for which _seq_media was fetched
         self._rebuild_panels()
 
     def _global(self) -> dict:
@@ -582,21 +670,73 @@ class MatrixScrollerDaemon:
         title  = _sanitize_text((meta.get("title")  or "").strip())
         album  = _sanitize_text((meta.get("album")  or "").strip())
         fallback = ""
-        for field in ("current_song", "current_sequence"):
-            val = (status.get(field) or "").strip()
+        # A remote without the media file reports no current_song; the FSEQ's
+        # mf header still names the song, usually better than the FSEQ name.
+        for val in (status.get("current_song"), self._seq_media, status.get("current_sequence")):
+            val = (val or "").strip()
             if val:
                 fallback = _sanitize_text(os.path.splitext(os.path.basename(val))[0])
                 break
         return {"artist": artist, "title": title, "album": album, "fallback": fallback}
 
+    def _update_seq_media(self, host: str, status: dict):
+        """Fetch the current sequence's mf header once per sequence."""
+        seq = (status.get("current_sequence") or "").strip()
+        if seq == "Global Pause":
+            seq = ""  # not a file, nothing to look up
+        if seq == self._seq_media_key and self._seq_media is not None:
+            return
+        self._seq_media = get_fpp_sequence_media(host, seq) if seq else ""
+        self._seq_media_key = seq
+        if seq:
+            log.debug("Sequence '%s' media: %r", seq, self._seq_media)
+
+    def _has_audio(self, status: dict) -> bool:
+        """True when the playing item has audio, on a master or a remote.
+
+        A master reports current_song for media.  A remote reports it only when
+        the media file is on the remote too, so also trust the FSEQ's mf header.
+        If the header could not be read, assume audio (the pre-#16 behaviour).
+        """
+        if (status.get("current_song") or "").strip():
+            return True
+        return self._seq_media is None or bool(self._seq_media)
+
+    def _is_item_playing(self, status: dict) -> bool:
+        """True while a playlist item (sequence and/or media) is playing."""
+        if status.get("status", 0) != 1:
+            return False
+        # FPP names the gap between playlist items "Global Pause"; nothing is playing
+        if (status.get("current_sequence") or "") == "Global Pause" and not status.get("current_song"):
+            return False
+        return True
+
     def _is_playing(self, status: dict) -> bool:
-        return status.get("status", 0) == 1
+        """True when the playing item counts as media for every panel."""
+        if not self._is_item_playing(status):
+            return False
+        if self._global().get("sequence_only", "idle") == "media":
+            return True
+        return self._has_audio(status)
+
+    def _override_candidates(self, status: dict) -> List[str]:
+        """Filenames a song_overrides key may name, most specific first."""
+        found = []
+        for val in (status.get("current_sequence"), status.get("current_song"), self._seq_media):
+            val = os.path.basename(unquote((val or "").strip()))
+            if val and val not in found:
+                found.append(val)
+        return found
 
     def poll_once(self):
         if not self._global().get("enable_output", True):
-            for panel in self.panels.values():
-                panel.stop()
+            # Stop once on the transition rather than hitting FPP every poll
+            if self._output_enabled is not False:
+                for panel in self.panels.values():
+                    panel.stop()
+                self._output_enabled = False
             return
+        self._output_enabled = True
 
         host = self._global().get("fpp_host", "localhost")
         no_media_timeout = float(self._global().get("no_media_timeout", 5.0))
@@ -607,13 +747,17 @@ class MatrixScrollerDaemon:
 
         now = time.monotonic()  # captured after network calls to avoid overstating no-media elapsed
 
+        self._update_seq_media(host, status)
+        item_playing = self._is_item_playing(status)
         playing  = self._is_playing(status)
-        song_key = self._get_current_song_key(status) if playing else ""
+        song_key = self._get_current_song_key(status) if item_playing else ""
+        candidates = self._override_candidates(status) if item_playing else []
 
         # When the song changes, fetch richer file-level tags from FPP's ffprobe endpoint.
         # status.mediameta is often empty; /api/media/{file}/meta has full ID3/vorbis tags.
-        if playing and song_key and song_key != self._media_meta_key:
-            filename = (status.get("current_song") or status.get("current_sequence") or "").strip()
+        # An FSEQ has no tags to probe, so only a real media file is looked up.
+        if item_playing and song_key and song_key != self._media_meta_key:
+            filename = (status.get("current_song") or "").strip()
             if filename:
                 tags = get_fpp_media_meta(host, os.path.basename(unquote(filename)))
                 self._media_meta = tags
@@ -622,14 +766,15 @@ class MatrixScrollerDaemon:
             else:
                 self._media_meta = {}
             self._media_meta_key = song_key
-        elif not playing:
+        elif not item_playing:
             self._media_meta = {}
             self._media_meta_key = ""
 
-        metadata = self._get_metadata(status, self._media_meta) if playing else {}
-        has_content = playing and bool(
+        metadata = self._get_metadata(status, self._media_meta) if item_playing else {}
+        has_metadata = bool(
             metadata.get("artist") or metadata.get("title") or metadata.get("fallback")
         )
+        has_content = playing and has_metadata
 
         if has_content:
             a, t = metadata.get("artist", ""), metadata.get("title", "")
@@ -651,17 +796,22 @@ class MatrixScrollerDaemon:
             media_enabled    = panel.cfg.get("media",    {}).get("enabled", True)
             no_media_enabled = panel.cfg.get("no_media", {}).get("enabled", True)
 
-            if has_content:
+            # An override naming this item makes it media for this panel, even a
+            # sequence without audio that sequence_only would otherwise idle.
+            ov_key = panel.match_override_key(candidates) if candidates else ""
+            panel_key = ov_key or song_key
+
+            if has_content or (ov_key and has_metadata):
                 # Reset no-media timer
                 self._no_media_since[pid] = None
                 if media_enabled:
                     meta_for_panel = dict(metadata)
-                    so = panel._get_song_overrides(song_key) if song_key else {}
+                    so = panel._get_song_overrides(panel_key) if panel_key else {}
                     for field in ("artist", "title", "album"):
                         if so.get(field):
                             meta_for_panel[field] = _sanitize_text(so[field])
                     msg = build_message(panel.cfg, "media", meta_for_panel)
-                    panel.start(msg, "media", song_key)
+                    panel.start(msg, "media", panel_key)
                 else:
                     panel.stop()
             else:
@@ -723,31 +873,29 @@ class MatrixScrollerDaemon:
         return get_fpp_models(host)
 
     def list_backups(self) -> list:
-        prefix = "plugin.fpp-matrixscroller.backup."
-        d = os.path.dirname(CONFIG_PATH)
         try:
-            files = [f for f in os.listdir(d)
-                     if f.startswith(prefix) and f.endswith(".json")]
+            files = [f for f in os.listdir(BACKUP_DIR)
+                     if f.startswith(_BACKUP_PREFIX) and f.endswith(".json")]
             return sorted(files, reverse=True)
         except Exception:
             return []
 
     def create_backup(self, name: str) -> str:
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:64]
-        filename = f"plugin.fpp-matrixscroller.backup.{safe}.json"
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        filename = f"{_BACKUP_PREFIX}{safe}.json"
+        path = os.path.join(BACKUP_DIR, filename)
+        os.makedirs(BACKUP_DIR, exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.config, f, indent=4)
         log.debug("Config backed up to %s", path)
         return filename
 
     def get_backup_content(self, filename: str) -> Optional[dict]:
-        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+        if (not filename.startswith(_BACKUP_PREFIX)
                 or "/" in filename or ".." in filename
                 or not filename.endswith(".json")):
             return None
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        path = os.path.join(BACKUP_DIR, filename)
         if not os.path.exists(path):
             return None
         try:
@@ -757,11 +905,11 @@ class MatrixScrollerDaemon:
             return None
 
     def delete_backup(self, filename: str) -> bool:
-        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+        if (not filename.startswith(_BACKUP_PREFIX)
                 or "/" in filename or ".." in filename
                 or not filename.endswith(".json")):
             return False
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        path = os.path.join(BACKUP_DIR, filename)
         if not os.path.exists(path):
             return False
         try:
@@ -794,11 +942,11 @@ class MatrixScrollerDaemon:
         return count
 
     def restore_backup(self, filename: str) -> bool:
-        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+        if (not filename.startswith(_BACKUP_PREFIX)
                 or "/" in filename or ".." in filename
                 or not filename.endswith(".json")):
             return False
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        path = os.path.join(BACKUP_DIR, filename)
         if not os.path.exists(path):
             return False
         try:

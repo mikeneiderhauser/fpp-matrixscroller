@@ -23,6 +23,7 @@ function getEndpointsfppmatrixscroller() {
         array('method' => 'GET',  'endpoint' => 'version',        'callback' => 'fppmatrixscrollerVersion'),
         array('method' => 'GET',  'endpoint' => 'fonts',          'callback' => 'fppmatrixscrollerFonts'),
         array('method' => 'GET',  'endpoint' => 'music',          'callback' => 'fppmatrixscrollerMusic'),
+        array('method' => 'GET',  'endpoint' => 'sequences',      'callback' => 'fppmatrixscrollerSequences'),
         array('method' => 'GET',  'endpoint' => 'daemon/start',   'callback' => 'fppmatrixscrollerDaemonStart'),
         array('method' => 'POST', 'endpoint' => 'daemon/stop',    'callback' => 'fppmatrixscrollerDaemonStop'),
         array('method' => 'POST', 'endpoint' => 'daemon/restart', 'callback' => 'fppmatrixscrollerDaemonRestart'),
@@ -82,6 +83,13 @@ function fppmatrixscrollerMusic() {
     return json($data ?: array('files' => array()));
 }
 
+function fppmatrixscrollerSequences() {
+    $resp = @file_get_contents('http://localhost/api/files/sequences');
+    if ($resp === false) return json(array('files' => array()));
+    $data = json_decode($resp, true);
+    return json($data ?: array('files' => array()));
+}
+
 function fppmatrixscrollerStatus()     { return fppmatrixscrollerDaemonRequest('status'); }
 function fppmatrixscrollerGetConfig()  { return fppmatrixscrollerDaemonRequest('config'); }
 function fppmatrixscrollerModels()     { return fppmatrixscrollerDaemonRequest('models'); }
@@ -103,15 +111,18 @@ function fppmatrixscrollerBackupDownload() {
 }
 
 function fppmatrixscrollerDaemonStart() {
-    $plugin_dir  = '/home/fpp/media/plugins/fpp-matrixscroller';
+    global $settings;
+    $plugin_dir  = $settings['pluginDirectory'] . '/fpp-matrixscroller';
     $daemon      = $plugin_dir . '/matrixscroller.py';
-    $logfile     = '/home/fpp/media/logs/fpp-matrixscroller.log';
+    $logfile     = $settings['logDirectory'] . '/plugin-fpp-matrixscroller.log';
     // Check if already responding
     $alive = @file_get_contents('http://localhost:32329/api/plugin/matrixscroller/status');
     if ($alive !== false) {
         return json(array('status' => 'already_running'));
     }
-    shell_exec('nohup python3 ' . escapeshellarg($daemon) .
+    shell_exec('MEDIADIR=' . escapeshellarg($settings['mediaDirectory']) .
+               ' LOGDIR=' . escapeshellarg($settings['logDirectory']) .
+               ' nohup python3 ' . escapeshellarg($daemon) .
                ' >> ' . escapeshellarg($logfile) . ' 2>&1 </dev/null &');
     usleep(1200000); // 1.2 s startup grace
     $alive = @file_get_contents('http://localhost:32329/api/plugin/matrixscroller/status');
