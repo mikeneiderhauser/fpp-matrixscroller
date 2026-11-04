@@ -35,12 +35,12 @@ ms_stop_daemon() {
             sleep 0.2
         fi
     fi
-    rm -f "$MS_PIDFILE" 2>/dev/null || true
     pids=$(ms_daemon_pids)
     if [ -n "$pids" ]; then
         echo "ERROR: could not stop matrixscroller (PID $(echo $pids), owner $(ps -o user= -p $(echo $pids | cut -d' ' -f1))); run as root" >&2
         return 1
     fi
+    rm -f "$MS_PIDFILE" 2>/dev/null || true
 }
 
 # Start the daemon unless one is already running.
