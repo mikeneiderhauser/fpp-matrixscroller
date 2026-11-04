@@ -126,6 +126,7 @@ select.form-select-sm { padding-top: 0.25rem !important; padding-bottom: 0.25rem
 
 <!-- Toast -->
 <div id="ms-toast" class="alert position-fixed bottom-0 end-0 m-3 d-none" role="alert" style="z-index:9999;min-width:14rem;"></div>
+<datalist id="ms-override-keys"></datalist>
 
 <script>
 const API = '/api/plugin/fpp-matrixscroller';
@@ -354,6 +355,7 @@ async function loadMusic() {
   ]);
   musicFiles    = ((music && music.files) || []).map(f => f.name);
   sequenceFiles = ((seqs  && seqs.files)  || []).map(f => f.name);
+  fillOverrideKeyList();
 }
 
 function fontOptions(selected) {
@@ -362,25 +364,24 @@ function fontOptions(selected) {
   ).join('');
 }
 
-// `filter` keeps names containing every word typed (case-insensitive); the
-// current selection always stays so filtering never changes what is saved
-function musicOptions(selected, filter = '') {
-  const words = filter.toLowerCase().split(/\s+/).filter(Boolean);
-  const matches = f => words.every(w => f.toLowerCase().includes(w));
-  const opt = f => `<option value="${escHtml(f)}" ${f===(selected||'')?'selected':''}>${escHtml(f)||'-- Select Song or Sequence --'}</option>`;
-  const group = (label, list) => {
-    const shown = list.filter(f => f === selected || matches(f));
-    return shown.length ? `<optgroup label="${label}">${shown.map(opt).join('')}</optgroup>` : '';
-  };
-  // Keep a saved key selectable even when its file isn't on this FPP
-  const known = selected && (musicFiles.includes(selected) || sequenceFiles.includes(selected));
-  return opt('') + (selected && !known ? opt(selected) : '') +
-    group('Media', musicFiles) + group('Sequences', sequenceFiles);
+// One shared suggestion list for every override's key field: typing in the
+// field filters it in the browser's own dropdown, each entry tagged with its kind
+function fillOverrideKeyList() {
+  const list = document.getElementById('ms-override-keys');
+  if (!list) return;
+  const opt = (f, kind) => `<option value="${escHtml(f)}" label="${kind}"></option>`;
+  list.innerHTML = musicFiles.map(f => opt(f, 'Media')).join('') +
+                   sequenceFiles.map(f => opt(f, 'Sequence')).join('');
 }
 
-function filterOverrideKeys(pfx, text) {
-  const sel = document.getElementById(`${pfx}_key`);
-  if (sel) sel.innerHTML = musicOptions(sel.value, text);
+// A key that names no file on this FPP is still saved as typed (it may be on
+// another player), but say so, so a typo is visible
+function checkOverrideKey(pfx) {
+  const key  = (document.getElementById(`${pfx}_key`)?.value || '').trim();
+  const note = document.getElementById(`${pfx}_key_note`);
+  if (!note) return;
+  const known = musicFiles.includes(key) || sequenceFiles.includes(key);
+  note.classList.toggle('d-none', !key || known);
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -769,8 +770,10 @@ function renderSongOverrideRow(panelIdx, i, ov) {
     <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
       <div class="flex-grow-1" style="min-width:11rem;">
         <label class="form-label form-label-sm mb-1" for="${pfx}_key">Song or Sequence</label>
-        <input type="search" class="form-control form-control-sm mb-1" placeholder="Search songs and sequences&hellip;" aria-label="Search songs and sequences" oninput="filterOverrideKeys('${pfx}', this.value)">
-        <select id="${pfx}_key" class="form-select form-select-sm">${musicOptions(ov.key||'')}</select>
+        <input type="text" id="${pfx}_key" list="ms-override-keys" class="form-control form-control-sm" autocomplete="off"
+               placeholder="Type to search songs and sequences&hellip;" value="${escHtml(ov.key||'')}"
+               oninput="checkOverrideKey('${pfx}')" onchange="checkOverrideKey('${pfx}')">
+        <div id="${pfx}_key_note" class="form-text text-warning ${(ov.key && !musicFiles.includes(ov.key) && !sequenceFiles.includes(ov.key)) ? '' : 'd-none'}">Not a song or sequence on this FPP; saved as typed.</div>
       </div>
       <div class="d-flex align-items-center gap-3 mt-3 flex-shrink-0">
         <div class="d-flex align-items-center gap-2">
