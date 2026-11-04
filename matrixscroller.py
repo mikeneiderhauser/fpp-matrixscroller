@@ -51,10 +51,20 @@ GIT_COMMIT = _get_git_commit()
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
-# Before the plugin- prefix the log had no name FPP rotates; carry its history over
-if os.path.exists(_OLD_LOG_PATH) and not os.path.exists(LOG_PATH):
+# Before the plugin- prefix the log had no name FPP rotates; carry its history
+# over. The start scripts' stderr redirect has usually created the new log
+# already, so put the old lines in front of whatever it holds.
+if os.path.exists(_OLD_LOG_PATH):
     try:
-        os.replace(_OLD_LOG_PATH, LOG_PATH)
+        with open(_OLD_LOG_PATH, "rb") as f:
+            history = f.read()
+        current = b""
+        if os.path.exists(LOG_PATH):
+            with open(LOG_PATH, "rb") as f:
+                current = f.read()
+        with open(LOG_PATH, "wb") as f:
+            f.write(history + current)
+        os.remove(_OLD_LOG_PATH)
     except OSError:
         pass
 # WatchedFileHandler reopens the file after FPP's rotation renames it

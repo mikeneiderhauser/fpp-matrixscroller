@@ -14,6 +14,9 @@ mkdir -p "$MS_LOGDIR"
 mkdir -p "$MS_MEDIADIR/config"
 mkdir -p "$MS_MEDIADIR/scripts"
 
+# Left by versions that kept a PID file
+rm -f /var/run/fppd/matrixscroller.pid
+
 # Deploy FPP playlist scripts
 for script in ms_enable_output.sh ms_restore_snapshot.sh ms_override_panel.sh ms_override_all.sh ms_reload_config.sh; do
     cp "$PLUGIN_DIR/scripts/$script" "$MS_MEDIADIR/scripts/"
