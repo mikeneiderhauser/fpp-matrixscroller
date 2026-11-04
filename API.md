@@ -352,9 +352,9 @@ Stop the daemon gracefully (`SIGTERM`). The HTTP response is sent before shutdow
 
 ## Config Backup & Restore
 
-Backup files are stored alongside the active config:
+Backup files are stored in the plugin's data folder:
 ```
-/home/fpp/media/config/plugin.fpp-matrixscroller.backup.YYYYMMDD-HHMMSS.json
+/home/fpp/media/plugindata/fpp-matrixscroller/backups/plugin.fpp-matrixscroller.backup.YYYYMMDD-HHMMSS.json
 ```
 
 ### `GET /backups`

@@ -25,7 +25,7 @@
 		"systemChanges": [
 			{
 				"kind": "service",
-				"what": "runs a background program whenever FPP is running, which checks what is playing about once a second (PID file in /var/run/fppd)"
+				"what": "runs a background program whenever FPP is running, which checks what is playing about once a second"
 			},
 			{
 				"kind": "network",
@@ -37,7 +37,7 @@
 			}
 		],
 		"closedCode": false,
-		"other": "Its API is served through FPP's web server, so anyone who can open this player's FPP pages can change its settings, set the text shown on the matrices, and turn its output on or off, the same as FPP itself; the optional Home Assistant files use that API. It switches the overlay models you choose on and off to draw text. It writes an activity log (logs/fpp-matrixscroller.log); at debug level that includes the messages and song titles it shows. Its settings (config/plugin.fpp-matrixscroller.json) and saved snapshots (config/plugin.fpp-matrixscroller.backup.*.json) are kept after uninstall."
+		"other": "Its API is served through FPP's web server, so anyone who can open this player's FPP pages can change its settings, set the text shown on the matrices, and turn its output on or off, the same as FPP itself; the optional Home Assistant files use that API. It switches the overlay models you choose on and off to draw text. It writes an activity log (logs/plugin-fpp-matrixscroller.log); at debug level that includes the messages and song titles it shows. Its settings (config/plugin.fpp-matrixscroller.json) and saved snapshots (plugindata/fpp-matrixscroller/) are kept across a Reinstall on FPP 10.4 and later, and removed by any other uninstall."
 	},
 
 	"versions": [

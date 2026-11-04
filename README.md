@@ -124,13 +124,15 @@ POST /api/plugin/fpp-matrixscroller/message
 
 ### Config Snapshots
 
-Snapshots are saved to `/home/fpp/media/config/` alongside the active config, named:
+Snapshots are saved to `/home/fpp/media/plugindata/fpp-matrixscroller/backups/` (older versions kept them beside the config; they are moved there on the next start), named:
 
 ```
 plugin.fpp-matrixscroller.backup.<name>.json
 ```
 
 Where `<name>` is the user-provided name (the UI pre-fills it with a timestamp like `20260101-120000`).
+
+> **Uninstalling removes your settings and snapshots.** A Reinstall keeps them on FPP 10.4 and later. On FPP 10.3 and earlier a Reinstall is a plain uninstall plus install and removes them too, so download a snapshot first if you want to keep it.
 
 Save a snapshot via API:
 
@@ -344,7 +346,7 @@ See [`home-assistant/README.md`](home-assistant/README.md) for setup instruction
 ## Logs
 
 ```bash
-tail -f /home/fpp/media/logs/fpp-matrixscroller.log
+tail -f /home/fpp/media/logs/plugin-fpp-matrixscroller.log
 ```
 
 Log verbosity is controlled by FPP's built-in log level setting at **FPP → Settings → Logs → Plugin**. Set to `Debug` to see per-panel effect sends and config reloads; leave at `Info` (default) to log only startup, shutdown, and user-triggered actions.

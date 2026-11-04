@@ -8,6 +8,7 @@ Exposes a REST API on port 32329 for config and status.
 
 import json
 import logging
+import logging.handlers
 import os
 import re
 import signal
@@ -23,10 +24,17 @@ from typing import Dict, List, Optional
 from urllib.parse import unquote, quote, parse_qs
 
 # ── Paths ────────────────────────────────────────────────────────────────────
+# FPP exports MEDIADIR/LOGDIR to the processes it launches; fall back to the
+# default install paths when run by hand.
 PLUGIN_DIR   = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH  = "/home/fpp/media/config/plugin.fpp-matrixscroller.json"
+MEDIA_DIR    = os.environ.get("MEDIADIR", "/home/fpp/media")
+LOG_DIR      = os.environ.get("LOGDIR", os.path.join(MEDIA_DIR, "logs"))
+CONFIG_PATH  = os.path.join(MEDIA_DIR, "config", "plugin.fpp-matrixscroller.json")
+BACKUP_DIR   = os.path.join(MEDIA_DIR, "plugindata", "fpp-matrixscroller", "backups")
 DEFAULT_CFG  = os.path.join(PLUGIN_DIR, "config.json")
-LOG_PATH     = "/home/fpp/media/logs/fpp-matrixscroller.log"
+# FPP rotates logs named plugin-<repoName>.log
+LOG_PATH     = os.path.join(LOG_DIR, "plugin-fpp-matrixscroller.log")
+_OLD_LOG_PATH = os.path.join(LOG_DIR, "fpp-matrixscroller.log")
 API_PORT     = 32329
 
 def _get_git_commit() -> str:
@@ -43,10 +51,17 @@ GIT_COMMIT = _get_git_commit()
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+# Before the plugin- prefix the log had no name FPP rotates; carry its history over
+if os.path.exists(_OLD_LOG_PATH) and not os.path.exists(LOG_PATH):
+    try:
+        os.replace(_OLD_LOG_PATH, LOG_PATH)
+    except OSError:
+        pass
+# WatchedFileHandler reopens the file after FPP's rotation renames it
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.FileHandler(LOG_PATH)],
+    handlers=[logging.handlers.WatchedFileHandler(LOG_PATH)],
 )
 log = logging.getLogger("matrixscroller")
 
@@ -99,20 +114,36 @@ def _migrate_config(cfg: dict) -> bool:
     return migrated
 
 
-_FPP_SETTINGS_PATH = "/home/fpp/media/settings"
+_BACKUP_PREFIX = "plugin.fpp-matrixscroller.backup."
+
+def _migrate_snapshots():
+    """Move snapshots saved beside the config (before they had their own
+    plugindata folder) into BACKUP_DIR. Safe to run on every start."""
+    config_dir = os.path.dirname(CONFIG_PATH)
+    try:
+        old = [f for f in os.listdir(config_dir)
+               if f.startswith(_BACKUP_PREFIX) and f.endswith(".json")]
+    except OSError:
+        return
+    if not old:
+        return
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    for f in old:
+        dest = os.path.join(BACKUP_DIR, f)
+        if not os.path.exists(dest):
+            try:
+                os.replace(os.path.join(config_dir, f), dest)
+            except OSError as e:
+                log.error("Could not move snapshot %s: %s", f, e)
+    log.info("Moved %d snapshot(s) to %s", len(old), BACKUP_DIR)
+
 
 def apply_log_level():
     """Set Python log level from FPP's LogLevel_Plugin setting."""
-    level_str = "info"
-    try:
-        with open(_FPP_SETTINGS_PATH) as f:
-            for line in f:
-                if line.startswith("LogLevel_Plugin"):
-                    level_str = line.split("=", 1)[1].strip().strip('"').lower()
-                    break
-    except Exception:
-        pass
-    level = (logging.DEBUG    if level_str in ("debug", "excess") else
+    # Read through FPP's API, not its settings file (whose format is internal)
+    data = fpp_get("localhost", "/api/settings/LogLevel_Plugin")
+    level_str = str((data or {}).get("value") or "info").strip().lower()
+    level =(logging.DEBUG    if level_str in ("debug", "excess") else
              logging.WARNING  if level_str == "warn"  else
              logging.ERROR    if level_str == "error" else
              logging.INFO)
@@ -184,6 +215,7 @@ def fpp_put(host: str, path: str, payload: dict) -> bool:
 
 # Only .pfb Type1 fonts work with FPP 10's compiled fppd / GraphicsMagick.
 # TrueType (.ttf) files exist on disk but mapFont() silently fails to resolve them.
+# FPP's /api/overlays/fonts lists those too, so scan for .pfb files instead.
 _FONT_DIRS = [
     "/usr/share/fonts/X11/Type1/",
     "/usr/local/share/fonts/",
@@ -556,6 +588,7 @@ class PanelController:
 class MatrixScrollerDaemon:
 
     def __init__(self):
+        _migrate_snapshots()
         self.config = load_config()
         apply_log_level()
         self.panels: Dict[str, PanelController] = {}
@@ -826,31 +859,29 @@ class MatrixScrollerDaemon:
         return get_fpp_models(host)
 
     def list_backups(self) -> list:
-        prefix = "plugin.fpp-matrixscroller.backup."
-        d = os.path.dirname(CONFIG_PATH)
         try:
-            files = [f for f in os.listdir(d)
-                     if f.startswith(prefix) and f.endswith(".json")]
+            files = [f for f in os.listdir(BACKUP_DIR)
+                     if f.startswith(_BACKUP_PREFIX) and f.endswith(".json")]
             return sorted(files, reverse=True)
         except Exception:
             return []
 
     def create_backup(self, name: str) -> str:
         safe = re.sub(r"[^A-Za-z0-9._-]", "_", name)[:64]
-        filename = f"plugin.fpp-matrixscroller.backup.{safe}.json"
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+        filename = f"{_BACKUP_PREFIX}{safe}.json"
+        path = os.path.join(BACKUP_DIR, filename)
+        os.makedirs(BACKUP_DIR, exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.config, f, indent=4)
         log.debug("Config backed up to %s", path)
         return filename
 
     def get_backup_content(self, filename: str) -> Optional[dict]:
-        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+        if (not filename.startswith(_BACKUP_PREFIX)
                 or "/" in filename or ".." in filename
                 or not filename.endswith(".json")):
             return None
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        path = os.path.join(BACKUP_DIR, filename)
         if not os.path.exists(path):
             return None
         try:
@@ -860,11 +891,11 @@ class MatrixScrollerDaemon:
             return None
 
     def delete_backup(self, filename: str) -> bool:
-        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+        if (not filename.startswith(_BACKUP_PREFIX)
                 or "/" in filename or ".." in filename
                 or not filename.endswith(".json")):
             return False
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        path = os.path.join(BACKUP_DIR, filename)
         if not os.path.exists(path):
             return False
         try:
@@ -897,11 +928,11 @@ class MatrixScrollerDaemon:
         return count
 
     def restore_backup(self, filename: str) -> bool:
-        if (not filename.startswith("plugin.fpp-matrixscroller.backup.")
+        if (not filename.startswith(_BACKUP_PREFIX)
                 or "/" in filename or ".." in filename
                 or not filename.endswith(".json")):
             return False
-        path = os.path.join(os.path.dirname(CONFIG_PATH), filename)
+        path = os.path.join(BACKUP_DIR, filename)
         if not os.path.exists(path):
             return False
         try:

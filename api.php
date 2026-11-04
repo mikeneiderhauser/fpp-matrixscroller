@@ -111,15 +111,18 @@ function fppmatrixscrollerBackupDownload() {
 }
 
 function fppmatrixscrollerDaemonStart() {
-    $plugin_dir  = '/home/fpp/media/plugins/fpp-matrixscroller';
+    global $settings;
+    $plugin_dir  = $settings['pluginDirectory'] . '/fpp-matrixscroller';
     $daemon      = $plugin_dir . '/matrixscroller.py';
-    $logfile     = '/home/fpp/media/logs/fpp-matrixscroller.log';
+    $logfile     = $settings['logDirectory'] . '/plugin-fpp-matrixscroller.log';
     // Check if already responding
     $alive = @file_get_contents('http://localhost:32329/api/plugin/matrixscroller/status');
     if ($alive !== false) {
         return json(array('status' => 'already_running'));
     }
-    shell_exec('nohup python3 ' . escapeshellarg($daemon) .
+    shell_exec('MEDIADIR=' . escapeshellarg($settings['mediaDirectory']) .
+               ' LOGDIR=' . escapeshellarg($settings['logDirectory']) .
+               ' nohup python3 ' . escapeshellarg($daemon) .
                ' >> ' . escapeshellarg($logfile) . ' 2>&1 </dev/null &');
     usleep(1200000); // 1.2 s startup grace
     $alive = @file_get_contents('http://localhost:32329/api/plugin/matrixscroller/status');

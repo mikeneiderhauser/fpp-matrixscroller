@@ -1,16 +1,17 @@
 #!/bin/bash
 # Shared daemon start/stop for the plugin's lifecycle scripts (sourced, not run).
 #
-# The daemon is found by its command line, not only the PID file: the web UI's
-# Start button launches one without writing the PID file, and a PID file can
-# outlive its process. FPP runs these scripts as root; run as another user they
-# cannot signal a root daemon, so stopping reports failure rather than letting
-# the caller start a second daemon beside it.
+# The daemon is found by its command line, so nothing needs a PID file: that
+# also finds one the web UI's Start button launched. FPP runs these scripts as
+# root; run as another user they cannot signal a root daemon, so stopping
+# reports failure rather than letting the caller start a second daemon beside it.
 
 MS_PLUGIN_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 MS_DAEMON="$MS_PLUGIN_DIR/matrixscroller.py"
-MS_PIDFILE="/var/run/fppd/matrixscroller.pid"
-MS_LOGFILE="/home/fpp/media/logs/fpp-matrixscroller.log"
+# FPP provides MEDIADIR/LOGDIR; fall back to the default install paths
+MS_MEDIADIR="${MEDIADIR:-/home/fpp/media}"
+MS_LOGDIR="${LOGDIR:-$MS_MEDIADIR/logs}"
+MS_LOGFILE="$MS_LOGDIR/plugin-fpp-matrixscroller.log"
 
 # PIDs of running daemons (anchored so a shell whose command line merely
 # mentions the path doesn't match)
@@ -40,7 +41,6 @@ ms_stop_daemon() {
         echo "ERROR: could not stop matrixscroller (PID $(echo $pids), owner $(ps -o user= -p $(echo $pids | cut -d' ' -f1))); run as root" >&2
         return 1
     fi
-    rm -f "$MS_PIDFILE" 2>/dev/null || true
 }
 
 # Start the daemon unless one is already running.
@@ -51,11 +51,11 @@ ms_start_daemon() {
         echo "matrixscroller already running (PID $(echo $pids))"
         return 0
     fi
-    mkdir -p "$(dirname "$MS_PIDFILE")" "$(dirname "$MS_LOGFILE")"
+    mkdir -p "$MS_LOGDIR"
     local commit
     commit=$(git -C "$MS_PLUGIN_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
     echo "Starting matrixscroller daemon @ $commit..."
-    python3 "$MS_DAEMON" >> "$MS_LOGFILE" 2>&1 &
-    echo $! > "$MS_PIDFILE"
+    # The daemon writes its own log; this only catches a crash traceback
+    MEDIADIR="$MS_MEDIADIR" LOGDIR="$MS_LOGDIR" python3 "$MS_DAEMON" >> "$MS_LOGFILE" 2>&1 &
     echo "matrixscroller started (PID $!)"
 }
