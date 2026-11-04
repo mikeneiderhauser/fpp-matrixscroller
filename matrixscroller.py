@@ -377,8 +377,14 @@ class PanelController:
         model = self.cfg.get("model", "")
         if not model:
             return
-        # Disable the model so FPP resets the TextMovementEffect state. Without
-        # this, re-sending text reuses stale x/y position and starts mid-scroll.
+        # Disabling the model alone leaves the running Text effect attached:
+        # FPP reuses it (stale x/y, so the next send starts mid-scroll), and an
+        # effect that finishes while the model is disabled waits forever for an
+        # output pass, reporting effectRunning=true so we never resend.
+        # Stop Effects drops it; the State PUT then cancels the deferred stop
+        # FPP queues on an enabled model and disables the model.
+        fpp_post_command(host, {"command": "Overlay Model Effect",
+                                "args": [model, "false", "Stop Effects"]})
         fpp_put(host, f"/api/overlays/model/{quote(model, safe='')}/state", {"State": 0})
 
     def start(self, message: str, mode: str, song_key: str = ""):
@@ -526,6 +532,7 @@ class MatrixScrollerDaemon:
         self._no_media_since: Dict[str, Optional[float]] = {}
         self._message_overrides: Dict[str, Optional[str]] = {}
         self._current_song = ""
+        self._output_enabled: Optional[bool] = None  # last seen enable_output, None until first poll
         self._media_meta: dict = {}               # format.tags for current song
         self._media_meta_key: str = ""            # song_key for which meta was fetched
         self._rebuild_panels()
@@ -594,9 +601,13 @@ class MatrixScrollerDaemon:
 
     def poll_once(self):
         if not self._global().get("enable_output", True):
-            for panel in self.panels.values():
-                panel.stop()
+            # Stop once on the transition rather than hitting FPP every poll
+            if self._output_enabled is not False:
+                for panel in self.panels.values():
+                    panel.stop()
+                self._output_enabled = False
             return
+        self._output_enabled = True
 
         host = self._global().get("fpp_host", "localhost")
         no_media_timeout = float(self._global().get("no_media_timeout", 5.0))
