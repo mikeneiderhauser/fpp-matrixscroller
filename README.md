@@ -276,13 +276,13 @@ The plugin adds these FPP commands. Use them anywhere FPP runs a command: a play
 
 | Command | Options | Does |
 |---------|---------|------|
-| **Matrix Scroller - All Panels** | On / Off / Toggle | Turns output for every panel on or off (the **Enable Output** switch) |
-| **Matrix Scroller - Panel** | Panel, On / Off / Toggle | Turns one panel on or off and saves it |
+| **Matrix Scroller - All Panels State** | On / Off / Toggle | The global on/off for every panel at once (the **Enable Output** switch). Each panel keeps its own setting, so turning all panels back on restores them as they were |
+| **Matrix Scroller - Panel State** | Panel, On / Off / Toggle | Turns one panel on or off and saves it (its **Enabled** checkbox). A panel that is on still shows nothing while All Panels State is Off |
 | **Matrix Scroller - Show Message** | Panel (or All panels), Message, Duration | Shows your text instead of song info. With a duration (seconds) it clears itself afterwards; `0` keeps it until cleared |
 | **Matrix Scroller - Clear Message** | Panel (or All panels) | Returns to normal song / idle display |
 | **Matrix Scroller - Restore Snapshot** | Snapshot | Applies a saved config snapshot |
 
-Panels and snapshots are picked from dropdowns.
+Panels and snapshots are picked from dropdowns. Each command and option has a description in FPP's command editor.
 
 ## Playlist Automation
 

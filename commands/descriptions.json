@@ -1,47 +1,60 @@
 [
     {
-        "name": "Matrix Scroller - All Panels",
+        "name": "Matrix Scroller - All Panels State",
+        "description": "Turn the matrix scroller on or off for every panel at once (the Enable Output switch). Each panel keeps its own on/off setting, so turning all panels back on restores them as they were.",
         "script": "all_panels.sh",
         "args": [
             { "name": "State", "description": "State", "type": "string", "optional": false,
-              "contents": ["On", "Off", "Toggle"], "default": "On" }
+              "contents": ["On", "Off", "Toggle"], "default": "On",
+              "help": "On enables all panels, Off disables all panels and clears the matrices, Toggle switches to the opposite of the current state." }
         ]
     },
     {
-        "name": "Matrix Scroller - Panel",
+        "name": "Matrix Scroller - Panel State",
+        "description": "Turn one panel on or off and save it (the panel's Enabled checkbox). Other panels are not affected. A panel that is on still shows nothing while All Panels State is Off.",
         "script": "panel.sh",
         "args": [
             { "name": "Panel", "description": "Panel", "type": "string", "optional": false,
-              "contentListUrl": "api/plugin/fpp-matrixscroller/panels", "allowBlanks": false },
+              "contentListUrl": "api/plugin/fpp-matrixscroller/panels", "allowBlanks": false,
+              "help": "The panel to change, as named on the Matrix Scroller page." },
             { "name": "State", "description": "State", "type": "string", "optional": false,
-              "contents": ["On", "Off", "Toggle"], "default": "On" }
+              "contents": ["On", "Off", "Toggle"], "default": "On",
+              "help": "On enables the panel, Off disables it and clears its matrix, Toggle switches it to the opposite of its current state." }
         ]
     },
     {
         "name": "Matrix Scroller - Show Message",
+        "description": "Scroll your own text on one panel or all panels instead of the song information.",
         "script": "show_message.sh",
         "args": [
             { "name": "Panel", "description": "Panel", "type": "string", "optional": false,
-              "contentListUrl": "api/plugin/fpp-matrixscroller/panel-targets", "allowBlanks": false, "default": "all" },
-            { "name": "Message", "description": "Message", "type": "string", "optional": false },
+              "contentListUrl": "api/plugin/fpp-matrixscroller/panel-targets", "allowBlanks": false, "default": "all",
+              "help": "One panel, or All panels." },
+            { "name": "Message", "description": "Message", "type": "string", "optional": false,
+              "help": "The text to scroll, e.g. Show starts at 6 PM." },
             { "name": "Duration", "description": "Duration (0 = until cleared)", "type": "int", "optional": true,
-              "min": 0, "max": 86400, "default": "0", "unit": "seconds" }
+              "min": 0, "max": 86400, "default": "0", "unit": "seconds",
+              "help": "How long to show the message before going back to normal. 0 keeps it until Clear Message is run." }
         ]
     },
     {
         "name": "Matrix Scroller - Clear Message",
+        "description": "Remove a message set by Show Message, returning the panel to song or idle display.",
         "script": "clear_message.sh",
         "args": [
             { "name": "Panel", "description": "Panel", "type": "string", "optional": false,
-              "contentListUrl": "api/plugin/fpp-matrixscroller/panel-targets", "allowBlanks": false, "default": "all" }
+              "contentListUrl": "api/plugin/fpp-matrixscroller/panel-targets", "allowBlanks": false, "default": "all",
+              "help": "One panel, or All panels." }
         ]
     },
     {
         "name": "Matrix Scroller - Restore Snapshot",
+        "description": "Replace the scroller's whole configuration with a snapshot saved on the Matrix Scroller page, e.g. to switch looks between show phases.",
         "script": "restore_snapshot.sh",
         "args": [
             { "name": "Snapshot", "description": "Snapshot", "type": "string", "optional": false,
-              "contentListUrl": "api/plugin/fpp-matrixscroller/snapshots", "allowBlanks": false }
+              "contentListUrl": "api/plugin/fpp-matrixscroller/snapshots", "allowBlanks": false,
+              "help": "A snapshot saved with Save Snapshot on the Matrix Scroller page." }
         ]
     }
 ]

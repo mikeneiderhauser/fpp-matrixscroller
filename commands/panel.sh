@@ -1,5 +1,5 @@
 #!/bin/bash
-# FPP command "Matrix Scroller - Panel": <panel id> <On|Off|Toggle>
+# FPP command "Matrix Scroller - Panel State": <panel id> <On|Off|Toggle>
 . "$(dirname "$0")/common.sh"
 
 [ -n "$1" ] || { echo "matrixscroller: a panel is required" >&2; exit 1; }
