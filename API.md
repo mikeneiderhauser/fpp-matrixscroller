@@ -180,17 +180,31 @@ Useful for confirming which version is running after an update.
 
 Enable or disable all overlay output without a full config round-trip. Equivalent to toggling the **Enable Output** checkbox in the web UI.
 
-**Request body**
+**Request body**: `enable` is `true`, `false` or `"toggle"`.
 ```json
 { "enable": true }
 ```
 
-**Response**
+**Response** (the new state)
 ```json
 { "status": "ok", "enable_output": true }
 ```
 
 > When disabled, all panel effects are stopped and the matrix is cleared. Config is preserved — re-enabling resumes immediately on the next poll.
+
+### `POST /panel`
+
+Turn one panel on or off, or toggle it, and save the change. Equivalent to the panel's **Enabled** checkbox. A disabled panel's matrix is cleared.
+
+**Request body**: `enabled` is `true`, `false` or `"toggle"`.
+```json
+{ "panel_id": "panel_1", "enabled": false }
+```
+
+**Response** (the new state); `404` if no panel has that `panel_id`
+```json
+{ "status": "ok", "panel_id": "panel_1", "enabled": false }
+```
 
 ---
 
@@ -200,11 +214,12 @@ Enable or disable all overlay output without a full config round-trip. Equivalen
 
 Send or clear a manual text override on a specific panel. While an override is active the panel ignores normal media/no-media logic.
 
-**Request body**
+**Request body**: `duration` (seconds) is optional. With it the message clears itself after that long; without it (or `0`) it stays until cleared.
 ```json
 {
   "panel_id": "panel_1",
-  "message": "Welcome to the show!"
+  "message": "Welcome to the show!",
+  "duration": 30
 }
 ```
 
@@ -231,9 +246,9 @@ Clear override (returns panel to normal song display):
 
 Send or clear the same manual override on **every configured panel** at once.
 
-**Request body**
+**Request body**: `duration` is optional, as for `/message`.
 ```json
-{ "message": "Welcome to the show!" }
+{ "message": "Welcome to the show!", "duration": 30 }
 ```
 
 Clear all overrides:
@@ -249,6 +264,18 @@ Clear all overrides:
   "message": "Welcome to the show!"
 }
 ```
+
+---
+
+## Command Dropdowns
+
+These feed the option dropdowns of the plugin's FPP commands. Each returns an object of `{ value: label }`.
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /panels` | `{ "panel_1": "Panel 1", ... }` |
+| `GET /panel-targets` | `{ "all": "All panels", "panel_1": "Panel 1", ... }` |
+| `GET /snapshots` | `{ "plugin.fpp-matrixscroller.backup.pre-show.json": "pre-show", ... }` |
 
 ---
 

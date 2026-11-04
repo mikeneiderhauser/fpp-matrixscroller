@@ -2,7 +2,7 @@
 	"name": "Matrix Scroller",
 	"repoName": "fpp-matrixscroller",
 	"author": "Mike Neiderhauser",
-	"description": "Scrolls song information and custom text across LED matrix panels using FPP's Overlay Model API. Per-panel config, per-song and per-sequence overrides, repeat delay, and a web UI. Can also drive a matrix on another FPP player you name. Includes a Home Assistant dashboard for remote control.",
+	"description": "Scrolls song information and custom text across LED matrix panels using FPP's Overlay Model API. Per-panel config, per-song and per-sequence overrides, repeat delay, FPP commands, and a web UI. Can also drive a matrix on another FPP player you name. Includes a Home Assistant dashboard for remote control.",
 	"homeURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller",
 	"srcURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller.git",
 	"bugURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller/issues",
@@ -37,7 +37,7 @@
 			}
 		],
 		"closedCode": false,
-		"other": "Its API is served through FPP's web server, so anyone who can open this player's FPP pages can change its settings, set the text shown on the matrices, and turn its output on or off, the same as FPP itself; the optional Home Assistant files use that API. It switches the overlay models you choose on and off to draw text. It writes an activity log (logs/plugin-fpp-matrixscroller.log); at debug level that includes the messages and song titles it shows. Its settings (config/plugin.fpp-matrixscroller.json) and saved snapshots (plugindata/fpp-matrixscroller/) stay after uninstall."
+		"other": "Its API is served through FPP's web server, so anyone who can open this player's FPP pages can change its settings, set the text shown on the matrices, and turn its output on or off, the same as FPP itself; the optional Home Assistant files use that API. Its FPP commands do the same (panels on/off, messages, restoring a snapshot) from anything that can run FPP commands, including MQTT and other FPP players. It switches the overlay models you choose on and off to draw text. It writes an activity log (logs/plugin-fpp-matrixscroller.log); at debug level that includes the messages and song titles it shows. Its settings (config/plugin.fpp-matrixscroller.json) and saved snapshots (plugindata/fpp-matrixscroller/) stay after uninstall."
 	},
 
 	"versions": [
