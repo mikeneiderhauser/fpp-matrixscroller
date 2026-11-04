@@ -2,7 +2,7 @@
 	"name": "Matrix Scroller",
 	"repoName": "fpp-matrixscroller",
 	"author": "Mike Neiderhauser",
-	"description": "Scrolls song information and custom text across LED matrix panels using FPP's Overlay Model API. Per-panel config, per-song and per-sequence overrides, repeat delay, and a web UI. Includes a Home Assistant dashboard for remote control.",
+	"description": "Scrolls song information and custom text across LED matrix panels using FPP's Overlay Model API. Per-panel config, per-song and per-sequence overrides, repeat delay, and a web UI. Can also drive a matrix on another FPP player you name. Includes a Home Assistant dashboard for remote control.",
 	"homeURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller",
 	"srcURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller.git",
 	"bugURL": "https://github.com/mikeneiderhauser/fpp-matrixscroller/issues",
@@ -19,21 +19,17 @@
 				"alwaysOn": false
 			}
 		],
-		"collects": [
-			{
-				"what": "a log of what it does; at debug level, the messages and song titles it shows",
-				"about": "operator",
-				"keptDays": null,
-				"canDelete": false,
-				"where": "plugin log"
-			}
-		],
+		"collects": [],
 		"sensors": [],
 		"remoteAccess": "none",
 		"systemChanges": [
 			{
 				"kind": "service",
-				"what": "runs a background program whenever FPP is running, which checks what is playing about once a second"
+				"what": "runs a background program whenever FPP is running, which checks what is playing about once a second (PID file in /var/run/fppd)"
+			},
+			{
+				"kind": "network",
+				"what": "its background program listens on 127.0.0.1:32329, reachable only from this device; FPP's web server passes requests to it"
 			},
 			{
 				"kind": "core-settings",
@@ -41,7 +37,7 @@
 			}
 		],
 		"closedCode": false,
-		"other": "Its API is served through FPP's web server, so anyone who can open this player's FPP pages can change its settings, set the text shown on the matrices, and turn its output on or off, the same as FPP itself; the optional Home Assistant files use that API. It switches the overlay models you choose on and off to draw text. Its settings (config/plugin.fpp-matrixscroller.json) and saved snapshots (config/plugin.fpp-matrixscroller.backup.*.json) are kept after uninstall."
+		"other": "Its API is served through FPP's web server, so anyone who can open this player's FPP pages can change its settings, set the text shown on the matrices, and turn its output on or off, the same as FPP itself; the optional Home Assistant files use that API. It switches the overlay models you choose on and off to draw text. It writes an activity log (logs/fpp-matrixscroller.log); at debug level that includes the messages and song titles it shows. Its settings (config/plugin.fpp-matrixscroller.json) and saved snapshots (config/plugin.fpp-matrixscroller.backup.*.json) are kept after uninstall."
 	},
 
 	"versions": [

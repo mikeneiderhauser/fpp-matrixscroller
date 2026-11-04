@@ -19,8 +19,9 @@ sections:
         icon: mdi:open-in-new
         tap_action:
           action: url
+          # ← change IP: replace YOUR_FPP_IP with your FPP's address
           url_path: >-
-            http://192.168.250.20/plugin.php?_menu=content&plugin=fpp-matrixscroller&page=matrixscroller.html
+            http://YOUR_FPP_IP/plugin.php?_menu=content&plugin=fpp-matrixscroller&page=matrixscroller.html
   - column_span: 2
     cards:
       - type: markdown
